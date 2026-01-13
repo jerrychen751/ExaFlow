@@ -1,0 +1,26 @@
+/shelf/
+/workspace.xml
+/httpRequests/
+/dataSources/
+/dataSources.local.xml
+*pycache*
+.mypy_cache/
+.pytest_cache/
+.coverage
+.venv/
+.ds_store
+.DS_Store
+
+# output files
+*.csv
+*.vtr
+*.egg-info/
+
+# Build directory
+/Build/
+/out/
+/in/
+
+# Simulations
+/Simulations/*
+!/Simulations/createNewSimulationDirectories.py
