@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 
 from .boundary_conditions import BoundaryCondition
-from .parameters import SimulationParameters
+from .parameters import RankCoords, SimulationParameters
 
 
 def initialize_bc(
-    rank_coords: Any,
+    rank_coords: RankCoords,
     sim_params: SimulationParameters,
     *,
     u: np.ndarray | None = None,
@@ -36,7 +34,7 @@ def initialize_bc(
 
 
 def update_bc(
-    rank_coords: Any,
+    rank_coords: RankCoords,
     sim_params: SimulationParameters,
     *,
     u: np.ndarray | None = None,
@@ -132,7 +130,7 @@ def _update_bc_1d(u: np.ndarray, p: np.ndarray, rank_x: int, sim_params: Simulat
                 raise ValueError(f"Invalid boundary condition: {right}.")
 
 
-def _initialize_bc_2d(u: np.ndarray, v: np.ndarray, p: np.ndarray, rank_coords: Any, sim_params: SimulationParameters) -> None:
+def _initialize_bc_2d(u: np.ndarray, v: np.ndarray, p: np.ndarray, rank_coords: RankCoords, sim_params: SimulationParameters) -> None:
     left = sim_params.left_wall
     right = sim_params.right_wall
     top = sim_params.top_wall
@@ -221,7 +219,7 @@ def _initialize_bc_2d(u: np.ndarray, v: np.ndarray, p: np.ndarray, rank_coords: 
                 raise ValueError(f"Invalid boundary condition: {bottom}.")
 
 
-def _update_bc_2d(u: np.ndarray, v: np.ndarray, p: np.ndarray, rank_coords: Any, sim_params: SimulationParameters) -> None:
+def _update_bc_2d(u: np.ndarray, v: np.ndarray, p: np.ndarray, rank_coords: RankCoords, sim_params: SimulationParameters) -> None:
     left = sim_params.left_wall
     right = sim_params.right_wall
     top = sim_params.top_wall
@@ -295,7 +293,7 @@ def _initialize_bc_3d(
     v: np.ndarray,
     w: np.ndarray,
     p: np.ndarray,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     sim_params: SimulationParameters,
 ) -> None:
     left = sim_params.left_wall
@@ -445,7 +443,7 @@ def _update_bc_3d(
     v: np.ndarray,
     w: np.ndarray,
     p: np.ndarray,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     sim_params: SimulationParameters,
 ) -> None:
     left = sim_params.left_wall

@@ -22,6 +22,9 @@ class Outflow(TypedDict, total=False):
 Domain: TypeAlias = tuple[int, ...]
 Size: TypeAlias = tuple[float, ...]
 
+# Rank Coords depend on whether it's 1D, 2D, or 3D
+RankCoords: TypeAlias = int | tuple[int, ...]
+
 
 def _parse_xml_bool(value: object) -> bool:
     """

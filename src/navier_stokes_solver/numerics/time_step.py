@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 
 from ..boundary_application import update_bc
 from ..mpi.ghost_layers import recv_ghost_info, send_ghost_info
-from ..parameters import SimulationParameters
+from ..parameters import RankCoords, SimulationParameters
 from .convection_3d import convectionExplicit3D, convectionExplicit3DBoundary
 from .diffusion_3d import diffusionExplicit3D, diffusionExplicit3DBoundary
 
@@ -14,7 +12,7 @@ from .diffusion_3d import diffusionExplicit3D, diffusionExplicit3DBoundary
 def spatial_operator(
     *,
     sim_params: SimulationParameters,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     p_old: np.ndarray,
     u_old: np.ndarray,
     v_old: np.ndarray,
@@ -66,7 +64,7 @@ def spatial_operator(
 def advance_time_step_first_order(
     *,
     sim_params: SimulationParameters,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     p_old: np.ndarray,
     u_old: np.ndarray,
     v_old: np.ndarray,
@@ -107,7 +105,7 @@ def advance_time_step_first_order(
 def advance_time_step_second_order(
     *,
     sim_params: SimulationParameters,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     p_old: np.ndarray,
     u_old: np.ndarray,
     v_old: np.ndarray,
@@ -154,7 +152,7 @@ def advance_time_step_second_order(
 def advance_time_step_third_order(
     *,
     sim_params: SimulationParameters,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     p_old: np.ndarray,
     u_old: np.ndarray,
     v_old: np.ndarray,
@@ -231,7 +229,7 @@ def advance_time_step_third_order(
 def advance_time_step(
     *,
     sim_params: SimulationParameters,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     p_old: np.ndarray,
     u_old: np.ndarray,
     v_old: np.ndarray,

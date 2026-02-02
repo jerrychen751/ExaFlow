@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import os
-from typing import Any
-
 import numpy as np
 
-from ..parameters import SimulationParameters
+from ..parameters import RankCoords, SimulationParameters
 
 
 def write_csv(
-    rank_coords: Any,
+    rank_coords: RankCoords,
     sim_params: SimulationParameters,
     name: str,
     *,
@@ -84,7 +82,7 @@ def write_csv_2d(
     u: np.ndarray,
     v: np.ndarray,
     p: np.ndarray,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     sim_params: SimulationParameters,
     name: str,
     *,
@@ -134,7 +132,7 @@ def write_csv_3d(
     v: np.ndarray,
     w: np.ndarray,
     p: np.ndarray,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     sim_params: SimulationParameters,
     name: str,
     *,

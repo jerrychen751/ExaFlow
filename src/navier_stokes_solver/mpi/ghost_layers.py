@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 
 from ..boundary_conditions import BoundaryCondition
-from ..parameters import SimulationParameters
+from ..parameters import RankCoords, SimulationParameters
 
 
 def add_ghost_layers(array: np.ndarray, num_ghost_layers: int, *, fill_value: float = 1.0) -> np.ndarray:
@@ -50,7 +50,7 @@ def remove_ghost_layers(array: np.ndarray, num_ghost_layers: int) -> np.ndarray:
     raise ValueError(f"Unsupported dimension {dimension}.")
 
 
-def send_ghost_info(array: np.ndarray, sim_params: SimulationParameters, rank_coords: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+def send_ghost_info(array: np.ndarray, sim_params: SimulationParameters, rank_coords: RankCoords) -> tuple[dict[str, Any], dict[str, Any]]:
     comm = sim_params.comm
     if comm is None:
         raise ValueError("send_ghost_info requires an MPI communicator (sim_params.comm).")
@@ -271,7 +271,7 @@ def send_ghost_info(array: np.ndarray, sim_params: SimulationParameters, rank_co
 def recv_ghost_info(
     array: np.ndarray,
     sim_params: SimulationParameters,
-    rank_coords: Any,
+    rank_coords: RankCoords,
     request: dict[str, Any],
     buffers: dict[str, Any],
 ) -> None:
