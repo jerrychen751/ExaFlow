@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Any, TypedDict, TypeAlias, overload
+from typing import Any, SupportsFloat, SupportsInt, TypeAlias, TypedDict
 
 import xmltodict
 
@@ -38,9 +38,9 @@ def _parse_xml_bool(value: object) -> bool:
     raise ValueError(f"Expected XML boolean 'True'/'False', got {value!r}.")
 
 
-def _require_positive_int(value: object, *, name: str) -> int:
+def _require_positive_int(value: str | SupportsInt, *, name: str) -> int:
     try:
-        as_int = int(value)  # type: ignore[arg-type]
+        as_int = int(value)
     except Exception as exc:
         raise ValueError(f"Expected integer for {name}, got {value!r}.") from exc
     if as_int <= 0:
@@ -48,9 +48,9 @@ def _require_positive_int(value: object, *, name: str) -> int:
     return as_int
 
 
-def _require_non_negative_int(value: object, *, name: str) -> int:
+def _require_non_negative_int(value: str | SupportsInt, *, name: str) -> int:
     try:
-        as_int = int(value)  # type: ignore[arg-type]
+        as_int = int(value)
     except Exception as exc:
         raise ValueError(f"Expected integer for {name}, got {value!r}.") from exc
     if as_int < 0:
@@ -58,9 +58,9 @@ def _require_non_negative_int(value: object, *, name: str) -> int:
     return as_int
 
 
-def _require_positive_float(value: object, *, name: str) -> float:
+def _require_positive_float(value: str | SupportsFloat, *, name: str) -> float:
     try:
-        as_float = float(value)  # type: ignore[arg-type]
+        as_float = float(value)
     except Exception as exc:
         raise ValueError(f"Expected float for {name}, got {value!r}.") from exc
     if not math.isfinite(as_float) or as_float <= 0.0:
@@ -68,9 +68,9 @@ def _require_positive_float(value: object, *, name: str) -> float:
     return as_float
 
 
-def _require_non_negative_float(value: object, *, name: str) -> float:
+def _require_non_negative_float(value: str | SupportsFloat, *, name: str) -> float:
     try:
-        as_float = float(value)  # type: ignore[arg-type]
+        as_float = float(value)
     except Exception as exc:
         raise ValueError(f"Expected float for {name}, got {value!r}.") from exc
     if not math.isfinite(as_float) or as_float < 0.0:
@@ -108,28 +108,28 @@ class SimulationParameters:
 
     # Boundary conditions
     left_wall: BoundaryCondition = BoundaryCondition.NO_SLIP
-    left_inflow: Inflow = field(default_factory=dict)
-    left_outflow: Outflow = field(default_factory=dict)
+    left_inflow: Inflow = field(default_factory=Inflow)
+    left_outflow: Outflow = field(default_factory=Outflow)
 
     right_wall: BoundaryCondition = BoundaryCondition.NO_SLIP
-    right_inflow: Inflow = field(default_factory=dict)
-    right_outflow: Outflow = field(default_factory=dict)
+    right_inflow: Inflow = field(default_factory=Inflow)
+    right_outflow: Outflow = field(default_factory=Outflow)
 
     top_wall: BoundaryCondition = BoundaryCondition.NO_SLIP
-    top_inflow: Inflow = field(default_factory=dict)
-    top_outflow: Outflow = field(default_factory=dict)
+    top_inflow: Inflow = field(default_factory=Inflow)
+    top_outflow: Outflow = field(default_factory=Outflow)
 
     bottom_wall: BoundaryCondition = BoundaryCondition.NO_SLIP
-    bottom_inflow: Inflow = field(default_factory=dict)
-    bottom_outflow: Outflow = field(default_factory=dict)
+    bottom_inflow: Inflow = field(default_factory=Inflow)
+    bottom_outflow: Outflow = field(default_factory=Outflow)
 
     front_wall: BoundaryCondition = BoundaryCondition.NO_SLIP
-    front_inflow: Inflow = field(default_factory=dict)
-    front_outflow: Outflow = field(default_factory=dict)
+    front_inflow: Inflow = field(default_factory=Inflow)
+    front_outflow: Outflow = field(default_factory=Outflow)
 
     back_wall: BoundaryCondition = BoundaryCondition.NO_SLIP
-    back_inflow: Inflow = field(default_factory=dict)
-    back_outflow: Outflow = field(default_factory=dict)
+    back_inflow: Inflow = field(default_factory=Inflow)
+    back_outflow: Outflow = field(default_factory=Outflow)
 
     # Initial conditions (XML-driven structure; kept as parsed dict for now)
     initial_conditions: dict[str, Any] | None = None
@@ -350,10 +350,6 @@ class SimulationParameters:
 
         self.dt = min(advection_dt, diffusion_dt)
         return self.dt
-
-
-@overload
-def simulation_parameters_from_xml(file_path: str, comm: Any | None) -> SimulationParameters: ...
 
 
 def simulation_parameters_from_xml(file_path: str, comm: Any | None) -> SimulationParameters:
