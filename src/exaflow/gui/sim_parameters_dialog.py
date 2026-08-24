@@ -7,6 +7,8 @@ from xml.dom import minidom
 
 from PySide6 import QtCore, QtWidgets
 
+from ..boundary_conditions import BoundaryCondition, parse_boundary_condition
+
 
 DEFAULT_INITIAL_CONDITIONS_XML = """<InitialConditions>
   <ReadFromVtrFile>False</ReadFromVtrFile>
@@ -67,31 +69,31 @@ def _default_values() -> Dict[str, Any]:
         "nt": 1000,
         "num_ghost_layers": 1,
         "cfl": 0.5,
-        "num_procs": 8,
+        "num_procs": 4,
         "num_procs_x": -1,
         "num_procs_y": -1,
         "num_procs_z": -1,
-        "left_wall": "Inflow",
+        "left_wall": BoundaryCondition.INFLOW.value,
         "left_inflow": {"u": 2.0, "v": 1.0, "w": 1.0},
         "left_outflow": {"p": 0.0},
-        "right_wall": "Outflow",
+        "right_wall": BoundaryCondition.OUTFLOW.value,
         "right_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
         "right_outflow": {"p": 0.0},
-        "top_wall": "No Slip Wall",
+        "top_wall": BoundaryCondition.NO_SLIP.value,
         "top_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
         "top_outflow": {"p": 0.0},
-        "bottom_wall": "No Slip Wall",
+        "bottom_wall": BoundaryCondition.NO_SLIP.value,
         "bottom_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
         "bottom_outflow": {"p": 0.0},
-        "front_wall": "No Slip Wall",
+        "front_wall": BoundaryCondition.NO_SLIP.value,
         "front_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
         "front_outflow": {"p": 0.0},
-        "back_wall": "No Slip Wall",
+        "back_wall": BoundaryCondition.NO_SLIP.value,
         "back_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
         "back_outflow": {"p": 0.0},
         "include_convection": True,
         "include_diffusion": True,
-        "include_pressure": True,
+        "include_pressure": False,
         "convection_scheme": "Upwind",
         "viscous_scheme": "CentralDifference",
         "time_integration_order": 1,
@@ -423,7 +425,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         }
 
         for key, widgets in self._boundary_fields.items():
-            data[f"{key}_wall"] = widgets.wall.text().strip() or "Wall"
+            data[f"{key}_wall"] = widgets.wall.text().strip() or BoundaryCondition.NO_SLIP.value
             data[f"{key}_inflow"] = {
                 "u": float(widgets.inflow["u"].value()),
                 "v": float(widgets.inflow["v"].value()),
@@ -445,6 +447,14 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         if not all(s > 0 for s in size):
             QtWidgets.QMessageBox.warning(self, "Invalid size", "All physical dimensions must be positive.")
             return
+        for key, widgets in self._boundary_fields.items():
+            wall_text = widgets.wall.text().strip() or BoundaryCondition.NO_SLIP.value
+            try:
+                parse_boundary_condition(wall_text)
+            except ValueError as exc:
+                QtWidgets.QMessageBox.warning(self, "Invalid boundary condition", f"{key} wall: {exc}")
+                return
+
         xml_text = self._initial_conditions_editor.toPlainText().strip()
         if xml_text and not xml_text.startswith("<InitialConditions"):
             QtWidgets.QMessageBox.warning(self, "Invalid initial conditions", "The block must start with <InitialConditions>.")

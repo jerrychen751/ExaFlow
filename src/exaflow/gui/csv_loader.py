@@ -29,7 +29,7 @@ def load_total_csv_to_imagedata(file_path: str) -> vtkImageData:
 
     with open(absolute_path, newline="") as csv_file:
         csv_reader = csv.reader(csv_file)
-        header_row = next(csv_reader, None)
+        next(csv_reader, None)
         # Robust to headers with/without spaces
         for data_row in csv_reader:
             if not data_row or len(data_row) < 7:
@@ -59,6 +59,9 @@ def load_total_csv_to_imagedata(file_path: str) -> vtkImageData:
             velocity_v_values.append(velocity_v)
             velocity_w_values.append(velocity_w)
             pressure_values.append(pressure)
+
+    if not coordinate_indices:
+        raise ValueError(f"No parsable data rows in {absolute_path}; expected rows of x,y,z,u,v,w,p.")
 
     nx, ny, nz = _infer_dimensions_from_indices(coordinate_indices)
 

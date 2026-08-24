@@ -112,7 +112,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Working directory
         self._working_directory_input = QtWidgets.QLineEdit(controls)
-        default_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        default_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir))
         self._working_directory_input.setText(default_root)
         self._working_directory_browse_button = QtWidgets.QPushButton("Browse…", controls)
         self._working_directory_browse_button.clicked.connect(self._browse_working_directory)
@@ -123,7 +123,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Output directory (for watcher)
         self._output_directory_input = QtWidgets.QLineEdit(controls)
-        self._output_directory_input.setText(default_root)
+        self._output_directory_input.setText(os.path.join(default_root, "out"))
         self._output_directory_browse_button = QtWidgets.QPushButton("Browse…", controls)
         self._output_directory_browse_button.clicked.connect(self._browse_output_directory)
         output_directory_row = QtWidgets.QHBoxLayout()
@@ -258,11 +258,14 @@ class MainWindow(QtWidgets.QMainWindow):
         gui_xml_path: Optional[str] = None
         if self._should_use_gui_parameters():
             try:
-                gui_xml_path = self._write_gui_parameters_xml(script_path)
+                gui_xml_path = self._write_gui_parameters_xml(script_path, mpi_processes)
             except Exception as exc:
                 QtWidgets.QMessageBox.critical(self, "Failed to write GUI parameters", str(exc))
                 return
             extra_script_args.append(f"--input-xml={gui_xml_path}")
+            dialog_ranks = self._gui_parameters.get("num_procs") if self._gui_parameters else None
+            if dialog_ranks is not None and int(dialog_ranks) != mpi_processes:
+                self._append_log(f"[{self._now()}] MPI ranks {mpi_processes} from the main window replaced the dialog value {dialog_ranks}; the decomposition may be refactorized.")
             self._append_log(f"[{self._now()}] GUI parameters saved to {gui_xml_path}")
         elif self._gui_parameters and not self._script_allows_gui_parameters:
             self._append_log("GUI parameters ignored: script defines its own SimulationParameters or loads XML.")
@@ -284,11 +287,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._simulation_process.setWorkingDirectory(working_directory)
         # Ensure child Python can import the top-level package
         environment = QtCore.QProcessEnvironment.systemEnvironment()
-        # Prepend repo root to PYTHONPATH
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        # Prepend the src/ root to PYTHONPATH
+        package_source_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
         existing_path = environment.value("PYTHONPATH", "")
         separator = ":" if existing_path else ""
-        environment.insert("PYTHONPATH", f"{repo_root}{separator}{existing_path}")
+        environment.insert("PYTHONPATH", f"{package_source_root}{separator}{existing_path}")
         self._simulation_process.setProcessEnvironment(environment)
         self._simulation_process.start(program, args)
 
@@ -374,6 +377,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             self._last_loaded_path = file_path
         except Exception:
+            self._last_loaded_path = file_path
             self._append_log(traceback.format_exc())
             QtWidgets.QMessageBox.critical(self, "Failed to load", os.path.basename(file_path))
 
@@ -455,12 +459,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def _should_use_gui_parameters(self) -> bool:
         return bool(self._script_allows_gui_parameters and self._gui_parameters)
 
-    def _write_gui_parameters_xml(self, script_path: str) -> str:
+    def _write_gui_parameters_xml(self, script_path: str, mpi_processes: int) -> str:
         if self._gui_parameters is None:
             raise RuntimeError("GUI parameters not configured")
         script_file = Path(script_path).resolve()
         xml_path = script_file.with_name(f"{script_file.stem}_input_parameters.xml")
-        xml_payload = simulation_values_to_xml(self._gui_parameters)
+        xml_payload = simulation_values_to_xml({**self._gui_parameters, "num_procs": mpi_processes})
         xml_path.write_text(xml_payload, encoding="utf-8")
         return str(xml_path)
 

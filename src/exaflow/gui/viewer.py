@@ -37,7 +37,6 @@ class PyVistaViewer(QtWidgets.QFrame):
 
         # Orientation widget (axes) and overlays
         self._coordinate_axes_actor: Any = None
-        self._ori_widget: Any = True  # no code reads this attribute
 
         # Outline and cube axes
         self._domain_outline_actor: Any = None

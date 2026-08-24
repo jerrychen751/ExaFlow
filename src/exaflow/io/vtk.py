@@ -19,10 +19,7 @@ def write_total_array_to_vtk(
     out_dir: str = "out",
 ) -> None:
     """
-    Write a full-domain dataset to VTK via pyevtk.
-
-    This is intentionally a thin wrapper so that solver usage does not require
-    pyevtk unless this function is called.
+    Write a full-domain dataset to VTK via pyevtk. This is intentionally a thin wrapper so that solver usage does not require pyevtk unless this function is called.
     """
 
     try:

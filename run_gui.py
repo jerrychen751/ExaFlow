@@ -6,9 +6,7 @@ from pathlib import Path
 
 def _ensure_src_on_path() -> None:
     """
-    Allow `python run_gui.py` without requiring an editable install.
-
-    The canonical code lives under `src/`, so we add it to sys.path if needed.
+    Allow `python run_gui.py` without requiring an editable install. The canonical code lives under `src/`, so we add it to sys.path if needed.
     """
 
     repo_root = Path(__file__).resolve().parent

@@ -1,14 +1,8 @@
+"""
+Template runner intended to be copied into per-simulation Build/ directories. This script assumes it lives at <repo>/Simulations/<simulation_name>/Build/run_simulation.py and therefore adds `<repo>/src` to `sys.path` to import the solver package without requiring a global installation.
+"""
+
 from __future__ import annotations
-
-"""
-Template runner intended to be copied into per-simulation Build/ directories.
-
-This script assumes it lives at:
-    <repo>/Simulations/<simulation_name>/Build/run_simulation.py
-
-and therefore adds `<repo>/src` to `sys.path` to import the solver package
-without requiring a global installation.
-"""
 
 import argparse
 import sys

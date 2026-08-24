@@ -1,7 +1,5 @@
 """
-Server for receiving streaming data from simulations.
-
-The rank 0 process first reconstructs the full domain from subdomain results, and then streams it via TCP (if desktop app) to the GUI (server).
+Server for receiving streaming data from simulations. The rank 0 process first reconstructs the full domain from subdomain results, and then streams it via TCP (if desktop app) to the GUI (server).
 """
 
 import struct
@@ -13,8 +11,7 @@ from .base import TransportProtocol, DEFAULT_STREAMING_PORT
 
 class StreamingServer(QtCore.QObject):
     """
-    Server for receiving streaming data.
-    Currently supports TCP.
+    Server for receiving streaming data. Currently supports TCP.
     """
     data_received = QtCore.Signal(pv.DataSet)
     image_received = QtCore.Signal(bytes)
@@ -57,8 +54,8 @@ class StreamingServer(QtCore.QObject):
         # Set up event listener for new connections
         self._server.newConnection.connect(self._on_new_connection)
 
-        # Start server to listen for connetions from any address
-        self._server.listen(QtNetwork.QHostAddress(QtNetwork.QHostAddress.SpecialAddress.Any), self._port)
+        # Start server to listen for connetions on the loopback interface
+        self._server.listen(QtNetwork.QHostAddress(QtNetwork.QHostAddress.SpecialAddress.LocalHost), self._port)
     
     def is_listening(self) -> bool:
         """Return whether the underlying TCP server is currently listening."""
@@ -66,11 +63,7 @@ class StreamingServer(QtCore.QObject):
 
     def _on_new_connection(self) -> None:
         """
-        Handle new client connection from QTcpServer.
-        
-        Called automatically when newConnection signal is emitted. Accepts the
-        pending connection, closes any existing active connection, and sets up
-        signal handlers for data reception and disconnection.
+        Handle new client connection from QTcpServer. Called automatically when newConnection signal is emitted. Accepts the pending connection, closes any existing active connection, and sets up signal handlers for data reception and disconnection.
         """
         # Takes in the next queued connection (accepted/signaled by Qt but not yet processed). Should be empty most of the time
         client_socket = self._server.nextPendingConnection()
@@ -118,10 +111,7 @@ class StreamingServer(QtCore.QObject):
     
     def _on_disconnected(self) -> None:
         """
-        Handle client disconnection.
-        
-        Called automatically when disconnected signal is emitted. Clears the
-        active connection reference and resets message buffering state.
+        Handle client disconnection. Called automatically when disconnected signal is emitted. Clears the active connection reference and resets message buffering state.
         """
         self._active_connection = None
         self._buffer.clear()

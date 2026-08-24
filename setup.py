@@ -7,6 +7,8 @@ setup(
     version="0.1.0",
     package_dir={"": "src"},
     packages=find_packages("src"),
+    package_data={"exaflow": ["py.typed"]},
+    zip_safe=False,
     python_requires=">=3.13",
     install_requires=[
         "numpy",
@@ -23,6 +25,9 @@ setup(
         ],
         "io": [
             "pyevtk",
+        ],
+        "poisson": [
+            "scipy",
         ],
     },
 )

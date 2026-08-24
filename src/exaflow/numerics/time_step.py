@@ -23,10 +23,7 @@ def spatial_operator(
     k_p: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Compute RHS increments (k arrays) for the current timestep stage.
-
-    Important invariant: k arrays are treated as scratch buffers and are fully
-    overwritten/initialized here. Callers must not assume prior contents are preserved.
+    Compute RHS increments (k arrays) for the current timestep stage. Important invariant: k arrays are treated as scratch buffers and are fully overwritten/initialized here. Callers must not assume prior contents are preserved.
     """
 
     # k arrays are scratch; ensure deterministic behavior.
@@ -122,6 +119,11 @@ def advance_time_step_second_order(
     """
     Midpoint method (second-order explicit Runge–Kutta).
     """
+
+    k_u.fill(0.0)
+    k_v.fill(0.0)
+    k_w.fill(0.0)
+    k_p.fill(0.0)
 
     betas = [0.0, 0.5]
     for beta in betas:

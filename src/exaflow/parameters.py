@@ -84,10 +84,7 @@ def _require_non_negative_float(value: str | SupportsFloat, *, name: str) -> flo
 @dataclass(slots=True)
 class SimulationParameters:
     """
-    Canonical simulation configuration.
-
-    This class centralizes parameter validation and derived quantities like
-    grid spacing (`dx`, `dy`, `dz`) and timestep size (`dt`).
+    Canonical simulation configuration. This class centralizes parameter validation and derived quantities like grid spacing (`dx`, `dy`, `dz`) and timestep size (`dt`).
     """
 
     # Fluid properties
@@ -214,9 +211,7 @@ class SimulationParameters:
 
     def _finalize_process_topology(self) -> None:
         """
-        Ensure (num_procs_x, num_procs_y, num_procs_z) are set consistently.
-
-        If no MPI communicator is provided, defaults to a single process.
+        Ensure (num_procs_x, num_procs_y, num_procs_z) are set consistently. If no MPI communicator is provided, defaults to a single process.
         """
 
         nprocs = self.num_procs

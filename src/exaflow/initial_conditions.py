@@ -75,13 +75,7 @@ def _fill_from_specified_values(sim_params: SimulationParameters, quantity: str)
 
 def _step_slices(domain: tuple[int, ...], step: dict[str, Any]) -> tuple[slice, ...]:
     """
-    Convert step parameters (fractional start/end) to numpy slices.
-
-    Original behavior was a triple for-loop with condition:
-        start <= i/n <= end   (inclusive)
-    We reproduce that with integer index bounds:
-        i_start = ceil(start*n)
-        i_end   = floor(end*n)
+    Convert step parameters (fractional start/end) to numpy slices. The condition is start <= i/n <= end, inclusive, expressed with the integer index bounds i_start = ceil(start*n) and i_end = floor(end*n).
     """
 
     def bounds(n: int, start_key: str, end_key: str) -> slice:

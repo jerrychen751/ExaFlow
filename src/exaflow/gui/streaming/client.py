@@ -15,8 +15,7 @@ from .serializers import PickleSerializer, ImageSerializer
 
 class StreamingClient:
     """
-    Client for sending data to visualization server.
-    Supports multiple transport protocols and data formats.
+    Client for sending data to visualization server. Supports multiple transport protocols and data formats.
     """
     def __init__(
         self,
@@ -33,7 +32,7 @@ class StreamingClient:
         if transport == TransportProtocol.TCP:
             self._transport = TCPSocketTransport(address, port, **kwargs)
         elif transport == TransportProtocol.WEBSOCKET:
-            pass
+            raise NotImplementedError(f"Client transport {transport.value} is not implemented.")
         else:
             raise ValueError(f"Unsupported transport: {transport}")
         
@@ -41,7 +40,7 @@ class StreamingClient:
         if format == DataFormat.PICKLE_DATASET:
             self._serializer = PickleSerializer()
         elif format == DataFormat.RENDERED_IMAGE:
-            pass
+            raise NotImplementedError(f"Client data format {format.value} is not implemented.")
         else:
             raise ValueError(f"Unsupported format: {format}")
     
@@ -49,8 +48,8 @@ class StreamingClient:
         data = self._serializer.serialize(dataset)
         return self._transport.send(data)
     
-    def send_image(self, image: Any):
-        pass
+    def send_image(self, image: Any) -> bool:
+        raise NotImplementedError("Image streaming is not implemented; use send_dataset.")
     
     def close(self):
         self._transport.close()

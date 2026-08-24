@@ -163,7 +163,7 @@
       </BackOutflow>
     </BoundaryConditions>
     <ParallelizationProperties>
-      <numProcs>8</numProcs>
+      <numProcs>4</numProcs>
       <numProcsX>-1</numProcsX>
       <numProcsY>-1</numProcsY>
       <numProcsZ>-1</numProcsZ>
@@ -174,7 +174,7 @@
       <IncludeViscousEffects>True</IncludeViscousEffects>
       <ViscousScheme>CentralDifference</ViscousScheme>
       <TimeIntegrationOrder>1</TimeIntegrationOrder>
-      <IncludePressureEffects>True</IncludePressureEffects>
+      <IncludePressureEffects>False</IncludePressureEffects>
     </SolverProperties>
     <OutputProperties>
       <WriteTotalVTKFrequency>100</WriteTotalVTKFrequency>

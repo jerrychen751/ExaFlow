@@ -5,9 +5,7 @@ from enum import Enum
 
 class BoundaryCondition(str, Enum):
     """
-    Boundary condition identifiers for domain faces.
-
-    Values are kept as strings to preserve readable serialization (e.g., XML).
+    Boundary condition identifiers for domain faces. Values are kept as strings to preserve readable serialization (e.g., XML).
     """
 
     NO_SLIP = "No Slip Wall"

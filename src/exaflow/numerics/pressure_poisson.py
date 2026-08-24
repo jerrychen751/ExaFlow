@@ -92,11 +92,7 @@ class PoissonSolver:
     # Approximated via central differences: ∂²p/∂x² ≈ (p[i+1] - 2p[i] + p[i-1]) / dx²
     def _build_laplacian(self) -> sparse.csr_matrix:
         """
-        Builds the LHS of ∇²p = (ρ/dt) · ∇·u*.
-
-        We need to convert the PDE operator ∇²p into a matrix equation Lp = RHS where L is a sparse matrix representing the central differences, p is the pressure flattened into a vector, and RHS is (ρ/dt) · ∇·u*.
-
-        Essentially, we return the matrix that is used in matrix-vector multiplication to apply central differences to each pressure point.
+        Builds the LHS of ∇²p = (ρ/dt) · ∇·u*. We need to convert the PDE operator ∇²p into a matrix equation Lp = RHS where L is a sparse matrix representing the central differences, p is the pressure flattened into a vector, and RHS is (ρ/dt) · ∇·u*. Essentially, we return the matrix that is used in matrix-vector multiplication to apply central differences to each pressure point.
         """
 
         if self.ndims == 1:
