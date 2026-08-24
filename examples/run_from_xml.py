@@ -5,14 +5,14 @@ import argparse
 import mpi4py.MPI as mpi
 import numpy as np
 
-from navier_stokes_solver.boundary_application import initialize_bc
-from navier_stokes_solver.initial_conditions import initialize_fields
-from navier_stokes_solver.io.csv import write_csv, write_total_array_to_csv
-from navier_stokes_solver.io.vtk import write_total_array_to_vtk
-from navier_stokes_solver.mpi.domain import parallelize_domain, rejoin_array
-from navier_stokes_solver.mpi.ghost_layers import add_ghost_layers, remove_ghost_layers
-from navier_stokes_solver.numerics.time_step import advance_time_step
-from navier_stokes_solver.parameters import simulation_parameters_from_xml
+from exaflow.boundary_application import initialize_bc
+from exaflow.initial_conditions import initialize_fields
+from exaflow.io.csv import write_csv, write_total_array_to_csv
+from exaflow.io.vtk import write_total_array_to_vtk
+from exaflow.mpi.domain import parallelize_domain, rejoin_array
+from exaflow.mpi.ghost_layers import add_ghost_layers, remove_ghost_layers
+from exaflow.numerics.time_step import advance_time_step
+from exaflow.parameters import simulation_parameters_from_xml
 
 
 def main() -> None:

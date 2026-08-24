@@ -5,8 +5,8 @@ import numpy as np
 from ..boundary_application import update_bc
 from ..mpi.ghost_layers import recv_ghost_info, send_ghost_info
 from ..parameters import RankCoords, SimulationParameters
-from .convection_3d import convectionExplicit3D, convectionExplicit3DBoundary
-from .diffusion_3d import diffusionExplicit3D, diffusionExplicit3DBoundary
+from .convection_3d import convection_explicit_3d, convection_explicit_3d_boundary
+from .diffusion_3d import diffusion_explicit_3d, diffusion_explicit_3d_boundary
 
 
 def spatial_operator(
@@ -42,9 +42,9 @@ def spatial_operator(
     req_p, buf_p = send_ghost_info(p_old, sim_params, rank_coords)
 
     if sim_params.include_convection:
-        k_u, k_v, k_w = convectionExplicit3D(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
+        k_u, k_v, k_w = convection_explicit_3d(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
     if sim_params.include_diffusion:
-        k_u, k_v, k_w = diffusionExplicit3D(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
+        k_u, k_v, k_w = diffusion_explicit_3d(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
 
     recv_ghost_info(u_old, sim_params, rank_coords, req_u, buf_u)
     recv_ghost_info(v_old, sim_params, rank_coords, req_v, buf_v)
@@ -54,9 +54,9 @@ def spatial_operator(
     update_bc(rank_coords, sim_params, u=u_old, v=v_old, w=w_old, p=p_old)
 
     if sim_params.include_convection:
-        k_u, k_v, k_w = convectionExplicit3DBoundary(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
+        k_u, k_v, k_w = convection_explicit_3d_boundary(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
     if sim_params.include_diffusion:
-        k_u, k_v, k_w = diffusionExplicit3DBoundary(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
+        k_u, k_v, k_w = diffusion_explicit_3d_boundary(u_old, v_old, w_old, k_u, k_v, k_w, sim_params)
 
     return k_u, k_v, k_w, k_p
 

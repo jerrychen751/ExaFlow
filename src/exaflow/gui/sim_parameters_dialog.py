@@ -65,40 +65,40 @@ def _default_values() -> Dict[str, Any]:
         "domain": [100, 100, 50],
         "size": [6.28, 3.14, 2.0],
         "nt": 1000,
-        "numGhostLayers": 1,
-        "CFL": 0.5,
-        "numProcs": 8,
-        "numProcsX": -1,
-        "numProcsY": -1,
-        "numProcsZ": -1,
-        "leftWall": "Inflow",
-        "leftInflow": {"u": 2.0, "v": 1.0, "w": 1.0},
-        "leftOutflow": {"p": 0.0},
-        "rightWall": "Outflow",
-        "rightInflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "rightOutflow": {"p": 0.0},
-        "topWall": "No Slip Wall",
-        "topInflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "topOutflow": {"p": 0.0},
-        "bottomWall": "No Slip Wall",
-        "bottomInflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "bottomOutflow": {"p": 0.0},
-        "frontWall": "No Slip Wall",
-        "frontInflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "frontOutflow": {"p": 0.0},
-        "backWall": "No Slip Wall",
-        "backInflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "backOutflow": {"p": 0.0},
-        "includeConvection": True,
-        "includeDiffusion": True,
-        "includePressure": True,
-        "convectionScheme": "Upwind",
-        "viscousScheme": "CentralDifference",
-        "timeIntegrationOrder": 1,
-        "VTKfrequency": 100,
-        "totalCSVfrequency": 100,
-        "partialCSVfrequency": 250,
-        "initialConditionsXML": DEFAULT_INITIAL_CONDITIONS_XML.strip(),
+        "num_ghost_layers": 1,
+        "cfl": 0.5,
+        "num_procs": 8,
+        "num_procs_x": -1,
+        "num_procs_y": -1,
+        "num_procs_z": -1,
+        "left_wall": "Inflow",
+        "left_inflow": {"u": 2.0, "v": 1.0, "w": 1.0},
+        "left_outflow": {"p": 0.0},
+        "right_wall": "Outflow",
+        "right_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
+        "right_outflow": {"p": 0.0},
+        "top_wall": "No Slip Wall",
+        "top_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
+        "top_outflow": {"p": 0.0},
+        "bottom_wall": "No Slip Wall",
+        "bottom_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
+        "bottom_outflow": {"p": 0.0},
+        "front_wall": "No Slip Wall",
+        "front_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
+        "front_outflow": {"p": 0.0},
+        "back_wall": "No Slip Wall",
+        "back_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
+        "back_outflow": {"p": 0.0},
+        "include_convection": True,
+        "include_diffusion": True,
+        "include_pressure": True,
+        "convection_scheme": "Upwind",
+        "viscous_scheme": "CentralDifference",
+        "time_integration_order": 1,
+        "vtk_frequency": 100,
+        "total_csv_frequency": 100,
+        "partial_csv_frequency": 250,
+        "initial_conditions_xml": DEFAULT_INITIAL_CONDITIONS_XML.strip(),
     }
 
 
@@ -175,11 +175,11 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._int_fields["nt"] = self._create_int_input(1, 10_000_000)
         form.addRow("Time steps (nt)", self._int_fields["nt"])
 
-        self._int_fields["numGhostLayers"] = self._create_int_input(0, 10)
-        form.addRow("Ghost layers", self._int_fields["numGhostLayers"])
+        self._int_fields["num_ghost_layers"] = self._create_int_input(0, 10)
+        form.addRow("Ghost layers", self._int_fields["num_ghost_layers"])
 
-        self._double_fields["CFL"] = self._create_double_input(1e-6, 10.0, 4, 0.05)
-        form.addRow("CFL", self._double_fields["CFL"])
+        self._double_fields["cfl"] = self._create_double_input(1e-6, 10.0, 4, 0.05)
+        form.addRow("CFL", self._double_fields["cfl"])
 
         return widget
 
@@ -187,29 +187,29 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         widget = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(widget)
 
-        self._int_fields["numProcs"] = self._create_int_input(1, 4096)
-        form.addRow("MPI ranks", self._int_fields["numProcs"])
+        self._int_fields["num_procs"] = self._create_int_input(1, 4096)
+        form.addRow("MPI ranks", self._int_fields["num_procs"])
 
-        self._int_fields["numProcsX"] = self._create_int_input(-1, 4096)
-        self._int_fields["numProcsY"] = self._create_int_input(-1, 4096)
-        self._int_fields["numProcsZ"] = self._create_int_input(-1, 4096)
-        form.addRow("Decomposition (x, y, z)", self._merge_triplet(self._int_fields["numProcsX"], self._int_fields["numProcsY"], self._int_fields["numProcsZ"]))
+        self._int_fields["num_procs_x"] = self._create_int_input(-1, 4096)
+        self._int_fields["num_procs_y"] = self._create_int_input(-1, 4096)
+        self._int_fields["num_procs_z"] = self._create_int_input(-1, 4096)
+        form.addRow("Decomposition (x, y, z)", self._merge_triplet(self._int_fields["num_procs_x"], self._int_fields["num_procs_y"], self._int_fields["num_procs_z"]))
 
-        self._bool_fields["includeConvection"] = QtWidgets.QCheckBox("Include convection")
-        form.addRow(self._bool_fields["includeConvection"])
-        self._combo_fields["convectionScheme"] = self._create_scheme_combo(["Upwind", "CentralDifference", "Hybrid"])
-        form.addRow("Convection scheme", self._combo_fields["convectionScheme"])
+        self._bool_fields["include_convection"] = QtWidgets.QCheckBox("Include convection")
+        form.addRow(self._bool_fields["include_convection"])
+        self._combo_fields["convection_scheme"] = self._create_scheme_combo(["Upwind", "CentralDifference", "Hybrid"])
+        form.addRow("Convection scheme", self._combo_fields["convection_scheme"])
 
-        self._bool_fields["includeDiffusion"] = QtWidgets.QCheckBox("Include diffusion")
-        form.addRow(self._bool_fields["includeDiffusion"])
-        self._combo_fields["viscousScheme"] = self._create_scheme_combo(["CentralDifference", "Upwind", "Hybrid"])
-        form.addRow("Viscous scheme", self._combo_fields["viscousScheme"])
+        self._bool_fields["include_diffusion"] = QtWidgets.QCheckBox("Include diffusion")
+        form.addRow(self._bool_fields["include_diffusion"])
+        self._combo_fields["viscous_scheme"] = self._create_scheme_combo(["CentralDifference", "Upwind", "Hybrid"])
+        form.addRow("Viscous scheme", self._combo_fields["viscous_scheme"])
 
-        self._bool_fields["includePressure"] = QtWidgets.QCheckBox("Include pressure")
-        form.addRow(self._bool_fields["includePressure"])
+        self._bool_fields["include_pressure"] = QtWidgets.QCheckBox("Include pressure")
+        form.addRow(self._bool_fields["include_pressure"])
 
-        self._int_fields["timeIntegrationOrder"] = self._create_int_input(1, 10)
-        form.addRow("Time integration order", self._int_fields["timeIntegrationOrder"])
+        self._int_fields["time_integration_order"] = self._create_int_input(1, 10)
+        form.addRow("Time integration order", self._int_fields["time_integration_order"])
 
         return widget
 
@@ -265,14 +265,14 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         widget = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(widget)
 
-        self._int_fields["VTKfrequency"] = self._create_int_input(-1, 1_000_000)
-        form.addRow("VTK frequency", self._int_fields["VTKfrequency"])
+        self._int_fields["vtk_frequency"] = self._create_int_input(-1, 1_000_000)
+        form.addRow("VTK frequency", self._int_fields["vtk_frequency"])
 
-        self._int_fields["totalCSVfrequency"] = self._create_int_input(-1, 1_000_000)
-        form.addRow("Total CSV frequency", self._int_fields["totalCSVfrequency"])
+        self._int_fields["total_csv_frequency"] = self._create_int_input(-1, 1_000_000)
+        form.addRow("Total CSV frequency", self._int_fields["total_csv_frequency"])
 
-        self._int_fields["partialCSVfrequency"] = self._create_int_input(-1, 1_000_000)
-        form.addRow("Partial CSV frequency", self._int_fields["partialCSVfrequency"])
+        self._int_fields["partial_csv_frequency"] = self._create_int_input(-1, 1_000_000)
+        form.addRow("Partial CSV frequency", self._int_fields["partial_csv_frequency"])
 
         return widget
 
@@ -349,31 +349,31 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._double_fields["size_height"].setValue(float(height))
 
         self._int_fields["nt"].setValue(int(v["nt"]))
-        self._int_fields["numGhostLayers"].setValue(int(v["numGhostLayers"]))
-        self._double_fields["CFL"].setValue(float(v["CFL"]))
+        self._int_fields["num_ghost_layers"].setValue(int(v["num_ghost_layers"]))
+        self._double_fields["cfl"].setValue(float(v["cfl"]))
 
-        self._int_fields["numProcs"].setValue(int(v["numProcs"]))
-        self._int_fields["numProcsX"].setValue(int(v["numProcsX"]))
-        self._int_fields["numProcsY"].setValue(int(v["numProcsY"]))
-        self._int_fields["numProcsZ"].setValue(int(v["numProcsZ"]))
+        self._int_fields["num_procs"].setValue(int(v["num_procs"]))
+        self._int_fields["num_procs_x"].setValue(int(v["num_procs_x"]))
+        self._int_fields["num_procs_y"].setValue(int(v["num_procs_y"]))
+        self._int_fields["num_procs_z"].setValue(int(v["num_procs_z"]))
 
-        self._bool_fields["includeConvection"].setChecked(bool(v["includeConvection"]))
-        self._combo_fields["convectionScheme"].setCurrentText(str(v["convectionScheme"]))
+        self._bool_fields["include_convection"].setChecked(bool(v["include_convection"]))
+        self._combo_fields["convection_scheme"].setCurrentText(str(v["convection_scheme"]))
 
-        self._bool_fields["includeDiffusion"].setChecked(bool(v["includeDiffusion"]))
-        self._combo_fields["viscousScheme"].setCurrentText(str(v["viscousScheme"]))
+        self._bool_fields["include_diffusion"].setChecked(bool(v["include_diffusion"]))
+        self._combo_fields["viscous_scheme"].setCurrentText(str(v["viscous_scheme"]))
 
-        self._bool_fields["includePressure"].setChecked(bool(v["includePressure"]))
-        self._int_fields["timeIntegrationOrder"].setValue(int(v["timeIntegrationOrder"]))
+        self._bool_fields["include_pressure"].setChecked(bool(v["include_pressure"]))
+        self._int_fields["time_integration_order"].setValue(int(v["time_integration_order"]))
 
-        self._int_fields["VTKfrequency"].setValue(int(v["VTKfrequency"]))
-        self._int_fields["totalCSVfrequency"].setValue(int(v["totalCSVfrequency"]))
-        self._int_fields["partialCSVfrequency"].setValue(int(v["partialCSVfrequency"]))
+        self._int_fields["vtk_frequency"].setValue(int(v["vtk_frequency"]))
+        self._int_fields["total_csv_frequency"].setValue(int(v["total_csv_frequency"]))
+        self._int_fields["partial_csv_frequency"].setValue(int(v["partial_csv_frequency"]))
 
         for key, widgets in self._boundary_fields.items():
-            wall_key = f"{key}Wall"
-            inflow_key = f"{key}Inflow"
-            outflow_key = f"{key}Outflow"
+            wall_key = f"{key}_wall"
+            inflow_key = f"{key}_inflow"
+            outflow_key = f"{key}_outflow"
             widgets.wall.setText(str(v[wall_key]))
             inflow = v[inflow_key]
             outflow = v[outflow_key]
@@ -382,7 +382,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
             widgets.inflow["w"].setValue(float(inflow.get("w", 0.0)))
             widgets.outflow["p"].setValue(float(outflow.get("p", 0.0)))
 
-        initial_text = v.get("initialConditionsXML", DEFAULT_INITIAL_CONDITIONS_XML).strip()
+        initial_text = v.get("initial_conditions_xml", DEFAULT_INITIAL_CONDITIONS_XML).strip()
         self._initial_conditions_editor.setPlainText(initial_text)
 
     # ------------------------ Data extraction ------------------------ #
@@ -404,32 +404,32 @@ class SimulationParametersDialog(QtWidgets.QDialog):
             "domain": domain,
             "size": size,
             "nt": int(self._int_fields["nt"].value()),
-            "numGhostLayers": int(self._int_fields["numGhostLayers"].value()),
-            "CFL": float(self._double_fields["CFL"].value()),
-            "numProcs": int(self._int_fields["numProcs"].value()),
-            "numProcsX": int(self._int_fields["numProcsX"].value()),
-            "numProcsY": int(self._int_fields["numProcsY"].value()),
-            "numProcsZ": int(self._int_fields["numProcsZ"].value()),
-            "includeConvection": bool(self._bool_fields["includeConvection"].isChecked()),
-            "includeDiffusion": bool(self._bool_fields["includeDiffusion"].isChecked()),
-            "includePressure": bool(self._bool_fields["includePressure"].isChecked()),
-            "convectionScheme": self._combo_fields["convectionScheme"].currentText().strip(),
-            "viscousScheme": self._combo_fields["viscousScheme"].currentText().strip(),
-            "timeIntegrationOrder": int(self._int_fields["timeIntegrationOrder"].value()),
-            "VTKfrequency": int(self._int_fields["VTKfrequency"].value()),
-            "totalCSVfrequency": int(self._int_fields["totalCSVfrequency"].value()),
-            "partialCSVfrequency": int(self._int_fields["partialCSVfrequency"].value()),
-            "initialConditionsXML": self._initial_conditions_editor.toPlainText().strip() or DEFAULT_INITIAL_CONDITIONS_XML.strip(),
+            "num_ghost_layers": int(self._int_fields["num_ghost_layers"].value()),
+            "cfl": float(self._double_fields["cfl"].value()),
+            "num_procs": int(self._int_fields["num_procs"].value()),
+            "num_procs_x": int(self._int_fields["num_procs_x"].value()),
+            "num_procs_y": int(self._int_fields["num_procs_y"].value()),
+            "num_procs_z": int(self._int_fields["num_procs_z"].value()),
+            "include_convection": bool(self._bool_fields["include_convection"].isChecked()),
+            "include_diffusion": bool(self._bool_fields["include_diffusion"].isChecked()),
+            "include_pressure": bool(self._bool_fields["include_pressure"].isChecked()),
+            "convection_scheme": self._combo_fields["convection_scheme"].currentText().strip(),
+            "viscous_scheme": self._combo_fields["viscous_scheme"].currentText().strip(),
+            "time_integration_order": int(self._int_fields["time_integration_order"].value()),
+            "vtk_frequency": int(self._int_fields["vtk_frequency"].value()),
+            "total_csv_frequency": int(self._int_fields["total_csv_frequency"].value()),
+            "partial_csv_frequency": int(self._int_fields["partial_csv_frequency"].value()),
+            "initial_conditions_xml": self._initial_conditions_editor.toPlainText().strip() or DEFAULT_INITIAL_CONDITIONS_XML.strip(),
         }
 
         for key, widgets in self._boundary_fields.items():
-            data[f"{key}Wall"] = widgets.wall.text().strip() or "Wall"
-            data[f"{key}Inflow"] = {
+            data[f"{key}_wall"] = widgets.wall.text().strip() or "Wall"
+            data[f"{key}_inflow"] = {
                 "u": float(widgets.inflow["u"].value()),
                 "v": float(widgets.inflow["v"].value()),
                 "w": float(widgets.inflow["w"].value()),
             }
-            data[f"{key}Outflow"] = {
+            data[f"{key}_outflow"] = {
                 "p": float(widgets.outflow["p"].value()),
             }
 
@@ -488,10 +488,10 @@ def simulation_values_to_xml(values: Dict[str, Any]) -> str:
     _add_text(domain, "nz", values["domain"][2])
 
     _add_text(grid, "nt", values["nt"])
-    _add_text(grid, "numGhosts", values["numGhostLayers"])
-    _add_text(grid, "CFL", values["CFL"])
+    _add_text(grid, "numGhosts", values["num_ghost_layers"])
+    _add_text(grid, "CFL", values["cfl"])
 
-    initial_xml = values.get("initialConditionsXML") or DEFAULT_INITIAL_CONDITIONS_XML
+    initial_xml = values.get("initial_conditions_xml") or DEFAULT_INITIAL_CONDITIONS_XML
     try:
         initial_element = ET.fromstring(initial_xml)
     except ET.ParseError:
@@ -508,36 +508,34 @@ def simulation_values_to_xml(values: Dict[str, Any]) -> str:
         ("back", "Back"),
     ]
     for key, title in names:
-        _add_text(boundary, f"{title}Wall", values[f"{key}Wall"])
+        _add_text(boundary, f"{title}Wall", values[f"{key}_wall"])
         inflow = ET.SubElement(boundary, f"{title}Inflow")
-        inflow_values = values[f"{key}Inflow"]
+        inflow_values = values[f"{key}_inflow"]
         _add_text(inflow, "u", inflow_values["u"])
         _add_text(inflow, "v", inflow_values["v"])
         _add_text(inflow, "w", inflow_values["w"])
         outflow = ET.SubElement(boundary, f"{title}Outflow")
-        outflow_values = values[f"{key}Outflow"]
+        outflow_values = values[f"{key}_outflow"]
         _add_text(outflow, "p", outflow_values["p"])
 
     parallel = ET.SubElement(root, "ParallelizationProperties")
-    _add_text(parallel, "numProcs", values["numProcs"])
-    _add_text(parallel, "numProcsX", values["numProcsX"])
-    _add_text(parallel, "numProcsY", values["numProcsY"])
-    _add_text(parallel, "numProcsZ", values["numProcsZ"])
+    _add_text(parallel, "numProcs", values["num_procs"])
+    _add_text(parallel, "numProcsX", values["num_procs_x"])
+    _add_text(parallel, "numProcsY", values["num_procs_y"])
+    _add_text(parallel, "numProcsZ", values["num_procs_z"])
 
     solver = ET.SubElement(root, "SolverProperties")
-    _add_text(solver, "IncludeConvectionEffects", _bool_text(values["includeConvection"]))
-    _add_text(solver, "ConvectionScheme", values["convectionScheme"])
-    _add_text(solver, "IncludeViscousEffects", _bool_text(values["includeDiffusion"]))
-    _add_text(solver, "ViscousScheme", values["viscousScheme"])
-    _add_text(solver, "TimeIntegrationOrder", values["timeIntegrationOrder"])
-    _add_text(solver, "IncludePressureEffects", _bool_text(values["includePressure"]))
+    _add_text(solver, "IncludeConvectionEffects", _bool_text(values["include_convection"]))
+    _add_text(solver, "ConvectionScheme", values["convection_scheme"])
+    _add_text(solver, "IncludeViscousEffects", _bool_text(values["include_diffusion"]))
+    _add_text(solver, "ViscousScheme", values["viscous_scheme"])
+    _add_text(solver, "TimeIntegrationOrder", values["time_integration_order"])
+    _add_text(solver, "IncludePressureEffects", _bool_text(values["include_pressure"]))
 
     output = ET.SubElement(root, "OutputProperties")
-    _add_text(output, "WriteTotalVTKFrequency", values["VTKfrequency"])
-    _add_text(output, "WriteTotalCSVFrequency", values["totalCSVfrequency"])
-    _add_text(output, "WritePartialCSVFrequency", values["partialCSVfrequency"])
+    _add_text(output, "WriteTotalVTKFrequency", values["vtk_frequency"])
+    _add_text(output, "WriteTotalCSVFrequency", values["total_csv_frequency"])
+    _add_text(output, "WritePartialCSVFrequency", values["partial_csv_frequency"])
 
     return _prettify(root)
 
-
-__all__ = ["SimulationParametersDialog", "DEFAULT_INITIAL_CONDITIONS_XML", "_default_values", "simulation_values_to_xml"]

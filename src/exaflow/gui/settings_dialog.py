@@ -53,5 +53,3 @@ class SettingsDialog(QtWidgets.QDialog):
             autoload_interval_ms=int(self._autoload_interval_spin.value()),
         )
 
-
-__all__ = ["SettingsDialog", "SessionSettings"]

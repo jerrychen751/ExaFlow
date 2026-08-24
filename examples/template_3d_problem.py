@@ -3,13 +3,13 @@ from __future__ import annotations
 import numpy as np
 import mpi4py.MPI as mpi
 
-from navier_stokes_solver.boundary_conditions import BoundaryCondition
-from navier_stokes_solver.boundary_application import initialize_bc
-from navier_stokes_solver.mpi.domain import parallelize_domain, rejoin_array
-from navier_stokes_solver.mpi.ghost_layers import add_ghost_layers, remove_ghost_layers
-from navier_stokes_solver.numerics.time_step import advance_time_step
-from navier_stokes_solver.parameters import SimulationParameters
-from navier_stokes_solver.io.csv import write_csv, write_total_array_to_csv
+from exaflow.boundary_conditions import BoundaryCondition
+from exaflow.boundary_application import initialize_bc
+from exaflow.mpi.domain import parallelize_domain, rejoin_array
+from exaflow.mpi.ghost_layers import add_ghost_layers, remove_ghost_layers
+from exaflow.numerics.time_step import advance_time_step
+from exaflow.parameters import SimulationParameters
+from exaflow.io.csv import write_csv, write_total_array_to_csv
 
 
 def main() -> None:
@@ -139,7 +139,7 @@ def main() -> None:
 
     comm.Barrier()
 
-    # Rejoin arrays on all ranks (legacy behavior kept)
+    # Rejoin arrays on all ranks
     u_final = u_original.copy()
     v_final = v_original.copy()
     w_final = w_original.copy()

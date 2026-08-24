@@ -17,11 +17,11 @@ def main() -> None:
     metadata_path = os.path.join(target_root, "metadata.txt")
     with open(metadata_path, "w", encoding="utf-8") as meta_file:
         meta_file.write("Do not modify this file\n")
-        meta_file.write("Created by createNewSimulationDirectories.py\n")
-        meta_file.write("Contains Build/ directory with in/, out/, and runSimulation.py\n")
+        meta_file.write("Created by create_simulation_directories.py\n")
+        meta_file.write("Contains Build/ directory with in/, out/, and run_simulation.py\n")
         meta_file.write("in/ has Input.xml where you specify simulation parameters\n")
         meta_file.write("out/ is where output CSVs and VTK files will be written\n")
-        meta_file.write("runSimulation.py is the script to run the simulation\n")
+        meta_file.write("run_simulation.py is the script to run the simulation\n")
         meta_file.write(f"Location: {target_root}\n")
         meta_file.write(f"Date: {datetime.now().strftime('%Y-%m-%d')}\n")
 
@@ -40,10 +40,10 @@ def main() -> None:
         print(f"Copied Input.xml to {dst_xml}")
 
     src_py = os.path.join(examples_dir, "run_simulation_template.py")
-    dst_py = os.path.join(build_dir, "runSimulation.py")
+    dst_py = os.path.join(build_dir, "run_simulation.py")
     if os.path.exists(src_py) and not os.path.exists(dst_py):
         shutil.copyfile(src_py, dst_py)
-        print(f"Copied runSimulation.py to {dst_py}")
+        print(f"Copied run_simulation.py to {dst_py}")
 
     print(f"Created directories and files in {build_dir}")
 

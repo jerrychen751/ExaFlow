@@ -14,7 +14,7 @@ from .base import TransportProtocol, DEFAULT_STREAMING_PORT
 class StreamingServer(QtCore.QObject):
     """
     Server for receiving streaming data.
-    Currently supports TCP, but architecture allows for WebSocket, etc.
+    Currently supports TCP.
     """
     data_received = QtCore.Signal(pv.DataSet)
     image_received = QtCore.Signal(bytes)
@@ -37,11 +37,9 @@ class StreamingServer(QtCore.QObject):
     
     # --- TCP Server Methods ---
     def _setup_tcp_server(self) -> None:
-        """Initialize TCP server and connection state variables.
-        
-        Creates a QTcpServer instance and initializes all state variables needed
-        for handling TCP connections and processing length-prefixed messages.
-        
+        """
+        Initialize TCP server and connection state variables. Creates a QTcpServer instance and initializes all state variables needed for handling TCP connections and processing length-prefixed messages.
+
         Initializes the following instance variables:
         - _server: QTcpServer instance for accepting connections
         - _active_connection: Tracks the single active client connection
@@ -74,8 +72,7 @@ class StreamingServer(QtCore.QObject):
         pending connection, closes any existing active connection, and sets up
         signal handlers for data reception and disconnection.
         """
-        # Takes in the next queued connection (accepted/signaled by Qt but not yet processed)
-        # Should be empty most of the time
+        # Takes in the next queued connection (accepted/signaled by Qt but not yet processed). Should be empty most of the time
         client_socket = self._server.nextPendingConnection()
         if self._active_connection:
             self._active_connection.close()
@@ -91,7 +88,7 @@ class StreamingServer(QtCore.QObject):
         
         self._buffer.append(self._active_connection.readAll())
         
-        # Message-parsing portion can later be refactored into separate helper method since it's protocol-agnostic
+        # Message-parsing portion is protocol-agnostic
         while self._buffer.size() > 0:
             # Read full message
             if self._expected_length is None:

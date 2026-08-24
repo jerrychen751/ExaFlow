@@ -4,7 +4,7 @@ from __future__ import annotations
 Template runner intended to be copied into per-simulation Build/ directories.
 
 This script assumes it lives at:
-    <repo>/Simulations/<simulation_name>/Build/runSimulation.py
+    <repo>/Simulations/<simulation_name>/Build/run_simulation.py
 
 and therefore adds `<repo>/src` to `sys.path` to import the solver package
 without requiring a global installation.
@@ -26,13 +26,13 @@ def _ensure_repo_src_on_path() -> None:
 def main() -> None:
     _ensure_repo_src_on_path()
 
-    from navier_stokes_solver.parameters import simulation_parameters_from_xml
-    from navier_stokes_solver.initial_conditions import initialize_fields
-    from navier_stokes_solver.boundary_application import initialize_bc
-    from navier_stokes_solver.mpi.domain import parallelize_domain, rejoin_array
-    from navier_stokes_solver.mpi.ghost_layers import add_ghost_layers, remove_ghost_layers
-    from navier_stokes_solver.numerics.time_step import advance_time_step
-    from navier_stokes_solver.io.csv import write_total_array_to_csv
+    from exaflow.parameters import simulation_parameters_from_xml
+    from exaflow.initial_conditions import initialize_fields
+    from exaflow.boundary_application import initialize_bc
+    from exaflow.mpi.domain import parallelize_domain, rejoin_array
+    from exaflow.mpi.ghost_layers import add_ghost_layers, remove_ghost_layers
+    from exaflow.numerics.time_step import advance_time_step
+    from exaflow.io.csv import write_total_array_to_csv
 
     import numpy as np
 

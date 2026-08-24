@@ -20,10 +20,7 @@ class BoundaryCondition(str, Enum):
 
 def parse_boundary_condition(value: str) -> BoundaryCondition:
     """
-    Parse a boundary condition from a string.
-
-    This is intentionally strict: since the refactor is enums-only, unknown values
-    raise a ValueError rather than silently accepting strings.
+    Parse a boundary condition from a string. This is intentionally strict: an unknown value raises a ValueError rather than silently accepting the string.
     """
 
     try:

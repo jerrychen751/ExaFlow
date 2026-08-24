@@ -22,8 +22,7 @@ class TCPSocketTransport(StreamingTransport):
                 s.settimeout(self._timeout)
                 s.connect((self._address, self._port))
                 length = len(data)
-                # Send an 8-byte unsigned int
-                # Have this as message prefix so that the server knows when data packets received are complete
+                # Send an 8-byte unsigned int. Have this as message prefix so that the server knows when data packets received are complete
                 s.sendall(struct.pack('!Q', length))
                 s.sendall(data)
                 return True

@@ -1,4 +1,4 @@
-# Python 3D Navier-Stokes Solver
+# ExaFlow
 
 A Python solver for the incompressible Navier-Stokes equations in 1D, 2D, and 3D with MPI parallelization.
 
@@ -15,26 +15,24 @@ The solver discretizes a physical domain into a grid, then marches forward in ti
 ## Project structure
 
 ```
-src/navier_stokes_solver/
-    boundary_application.py   # Applies wall, inflow, outflow, periodic BCs
-    boundary_conditions.py    # BoundaryCondition enum
-    parameters.py             # SimulationParameters config + grid/timestep math
-    initial_conditions.py     # Set up starting velocity/pressure fields
+src/exaflow/
+    boundary_application.py # Applies wall, inflow, outflow, periodic BCs
+    boundary_conditions.py # BoundaryCondition enum
+    parameters.py # SimulationParameters config + grid/timestep math
+    initial_conditions.py # Set up starting velocity/pressure fields
     numerics/
-        time_step.py          # RK time integration + spatial operator
-        convection_3d.py      # Advection stencils (u dot grad u)
-        diffusion_3d.py       # Viscous stencils (nu * laplacian u)
-        pressure_poisson.py   # Pressure Poisson solver (in progress)
+        time_step.py # RK time integration + spatial operator
+        convection_3d.py # Advection stencils (u dot grad u)
+        diffusion_3d.py # Viscous stencils (nu * laplacian u)
+        pressure_poisson.py # Pressure Poisson solver (in progress)
     mpi/
-        domain.py             # Domain decomposition across MPI ranks
-        ghost_layers.py       # Ghost cell padding + MPI exchange
+        domain.py # Domain decomposition across MPI ranks
+        ghost_layers.py # Ghost cell padding + MPI exchange
     io/
-        csv.py                # CSV output
-        vtk.py                # VTK output (via pyevtk)
-    gui/                      # Optional desktop GUI for visualization
-examples/                     # Ready-to-run simulation scripts
-tests/                        # Unit tests
-tests_mpi/                    # MPI integration tests
+        csv.py # CSV output
+        vtk.py # VTK output (via pyevtk)
+    gui/ # Optional desktop GUI for visualization
+examples/ # Ready-to-run simulation scripts
 ```
 
 ## Key concepts
@@ -92,9 +90,9 @@ Without pressure, the solver evolves momentum but does not enforce that the velo
 ### Install
 
 ```bash
-pip install -e ".[dev]"       # core + dev dependencies
-pip install -e ".[gui]"       # add GUI dependencies
-pip install -e ".[io]"        # add VTK output (pyevtk)
+pip install -e . # core dependencies
+pip install -e ".[gui]" # add GUI dependencies
+pip install -e ".[io]" # add VTK output (pyevtk)
 ```
 
 ### Run an example
@@ -116,23 +114,12 @@ PYTHONPATH=src mpiexec -n 4 python examples/run_from_xml.py --input-xml examples
 python run_gui.py
 ```
 
-### Run tests
-
-```bash
-# Unit tests
-PYTHONPATH=src python -m unittest -v
-
-# MPI tests (macOS may need slot mapping)
-PYTHONPATH=src mpiexec --host localhost:2 --map-by slot:OVERSUBSCRIBE -n 2 \
-  python -m unittest -v tests_mpi.test_periodic_exchange
-```
-
 ## Creating a new simulation
 
 ```bash
-python Simulations/createNewSimulationDirectories.py Simulations/MyRun
+python Simulations/create_simulation_directories.py Simulations/MyRun
 cd Simulations/MyRun/Build
-mpiexec -n 4 python runSimulation.py
+mpiexec -n 4 python run_simulation.py
 ```
 
 This creates a directory with a template XML config and run script.

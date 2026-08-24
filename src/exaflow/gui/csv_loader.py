@@ -17,9 +17,8 @@ def _infer_dimensions_from_indices(coordinate_rows: List[Tuple[int, int, int]]) 
 
 
 def load_total_csv_to_imagedata(file_path: str) -> vtkImageData:
-    """Load a *_Total.csv produced by WriteTotalArrayToCSV (dimension==3) into vtkImageData.
-
-    The CSV format is: x,y,z,u,v,w,p with integer indices and float values.
+    """
+    Load a *_Total.csv produced by write_total_array_to_csv (dimension==3) into vtkImageData. The CSV format is: x,y,z,u,v,w,p with integer indices and float values.
     """
     absolute_path = os.path.abspath(file_path)
     coordinate_indices: List[Tuple[int, int, int]] = []

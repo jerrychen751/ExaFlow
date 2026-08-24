@@ -348,8 +348,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not candidate_files:
             return None
         
-        # Sort by modification time, but prefer .vtr files over .csv files
-        # when timestamps are close (within 1 second)
+        # Sort by modification time, but prefer .vtr files over .csv files when timestamps are close (within 1 second)
         def sort_key(file_path: str) -> tuple[float, int]:
             mtime = os.path.getmtime(file_path)
             # Prefer .vtr files (priority 0) over .csv files (priority 1)
@@ -490,9 +489,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @staticmethod
     def _path_to_module(script_path: str, work_dir: str) -> str | None:
-        """Convert a script path under work_dir to a dotted module path.
-
-        Returns None if the path is not a .py file under work_dir.
+        """
+        Convert a script path under work_dir to a dotted module path. Returns None if the path is not a .py file under work_dir.
         """
         try:
             abs_script = os.path.abspath(script_path)

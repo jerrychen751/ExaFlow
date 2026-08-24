@@ -5,24 +5,24 @@ import numpy as np
 from ..parameters import SimulationParameters
 
 
-def diffusionExplicit3D(
+def diffusion_explicit_3d(
     u_old: np.ndarray,
     v_old: np.ndarray,
     w_old: np.ndarray,
     k_u: np.ndarray,
     k_v: np.ndarray,
     k_w: np.ndarray,
-    simParams: SimulationParameters,
+    sim_params: SimulationParameters,
     order: int = 1,
     direction: str = "central",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    dx = simParams.dx
-    dy = simParams.dy
-    dz = simParams.dz
-    dt = simParams.dt
-    nu = simParams.nu
+    dx = sim_params.dx
+    dy = sim_params.dy
+    dz = sim_params.dz
+    dt = sim_params.dt
+    nu = sim_params.nu
     if dx is None or dy is None or dz is None or dt is None:
-        raise ValueError("dx/dy/dz/dt must be computed before calling diffusionExplicit3D.")
+        raise ValueError("dx/dy/dz/dt must be computed before calling diffusion_explicit_3d.")
 
     match order:
         case 1:
@@ -52,24 +52,24 @@ def diffusionExplicit3D(
     return k_u, k_v, k_w
 
 
-def diffusionExplicit3DBoundary(
+def diffusion_explicit_3d_boundary(
     u_old: np.ndarray,
     v_old: np.ndarray,
     w_old: np.ndarray,
     k_u: np.ndarray,
     k_v: np.ndarray,
     k_w: np.ndarray,
-    simParams: SimulationParameters,
+    sim_params: SimulationParameters,
     order: int = 1,
     direction: str = "central",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    dx = simParams.dx
-    dy = simParams.dy
-    dz = simParams.dz
-    dt = simParams.dt
-    nu = simParams.nu
+    dx = sim_params.dx
+    dy = sim_params.dy
+    dz = sim_params.dz
+    dt = sim_params.dt
+    nu = sim_params.nu
     if dx is None or dy is None or dz is None or dt is None:
-        raise ValueError("dx/dy/dz/dt must be computed before calling diffusionExplicit3DBoundary.")
+        raise ValueError("dx/dy/dz/dt must be computed before calling diffusion_explicit_3d_boundary.")
 
     match order:
         case 1:
@@ -185,14 +185,6 @@ def diffusionExplicit3DBoundary(
     return k_u, k_v, k_w
 
 
-def diffusionImplicit3D(u: np.ndarray, v: np.ndarray, w: np.ndarray, order: int = 1, direction: str = "central") -> None:
+def diffusion_implicit_3d(u: np.ndarray, v: np.ndarray, w: np.ndarray, order: int = 1, direction: str = "central") -> None:
     raise NotImplementedError
-
-
-def diffusion_explicit_3d(*args, **kwargs):
-    return diffusionExplicit3D(*args, **kwargs)
-
-
-def diffusion_explicit_3d_boundary(*args, **kwargs):
-    return diffusionExplicit3DBoundary(*args, **kwargs)
 

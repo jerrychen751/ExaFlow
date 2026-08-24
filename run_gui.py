@@ -19,7 +19,7 @@ def _ensure_src_on_path() -> None:
 
 _ensure_src_on_path()
 
-from navier_stokes_solver.gui.app import main
+from exaflow.gui.app import main
 
 
 if __name__ == "__main__":

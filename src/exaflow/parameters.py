@@ -19,8 +19,8 @@ class Outflow(TypedDict, total=False):
     p: float
 
 
-Domain: TypeAlias = tuple[int, ...]
-Size: TypeAlias = tuple[float, ...]
+Domain: TypeAlias = tuple[int, ...] # number of grid points as (nx, ny, nz)
+Size: TypeAlias = tuple[float, ...] # physical length (length, width, height)
 
 # Rank Coords depend on whether it's 1D, 2D, or 3D
 RankCoords: TypeAlias = int | tuple[int, ...]
@@ -134,7 +134,7 @@ class SimulationParameters:
     back_inflow: Inflow = field(default_factory=Inflow)
     back_outflow: Outflow = field(default_factory=Outflow)
 
-    # Initial conditions (XML-driven structure; kept as parsed dict for now)
+    # Initial conditions (XML-driven structure, stored as the parsed dict)
     initial_conditions: dict[str, Any] | None = None
 
     # Solver toggles and schemes
@@ -184,7 +184,7 @@ class SimulationParameters:
 
         if self.include_pressure:
             raise NotImplementedError(
-                "Pressure projection / Poisson solve is not implemented in the refactored solver yet. "
+                "Pressure projection / Poisson solve is not implemented. "
                 "Set include_pressure=False."
             )
 
@@ -290,9 +290,7 @@ class SimulationParameters:
 
     def compute_grid_spacing(self) -> None:
         """
-        Compute physical grid spacing.
-
-        Invariant (chosen in Q&A): dx = length/(nx-1), etc.
+        Compute physical grid spacing. Invariant: dx = length/(nx-1), etc.
         """
 
         if self.dimension == 1:
