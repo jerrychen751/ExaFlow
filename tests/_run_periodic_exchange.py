@@ -24,7 +24,7 @@ subdomain = Subdomain(grid, ProcessGrid((comm.Get_size(),)), comm.Get_rank())
 
 state = allocate_state(subdomain, 1)
 start, stop = subdomain.bounds[0]
-state.velocity[0][subdomain.interior()] = np.arange(start, stop, dtype=float)
+state.velocity[0][subdomain.interior] = np.arange(start, stop, dtype=float)
 
 post_ghost_exchange(state, subdomain, Boundaries(left=periodic, right=periodic), comm).complete()
 

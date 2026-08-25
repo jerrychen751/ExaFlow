@@ -19,9 +19,9 @@ class Convection:
     def __init__(self, grid: Grid, subdomain: Subdomain) -> None:
         self._spacing = grid.spacing
         self._dimension = grid.dimension
-        self._interior = subdomain.interior()
-        self._lower = tuple(subdomain.shifted_interior(axis, -1) for axis in range(grid.dimension))
-        self._upper = tuple(subdomain.shifted_interior(axis, +1) for axis in range(grid.dimension))
+        self._interior = subdomain.interior
+        self._lower = tuple(subdomain.shift_interior(axis, -1) for axis in range(grid.dimension))
+        self._upper = tuple(subdomain.shift_interior(axis, +1) for axis in range(grid.dimension))
 
     def accumulate(self, state: FlowState, rate: FlowState) -> None:
         here = self._interior

@@ -56,10 +56,10 @@ def test_neighbors_are_symmetric() -> None:
     boundaries = Boundaries()
     for subdomain in subdomains:
         for face in Face:
-            neighbor = subdomain.neighbor_rank(face, boundaries)
+            neighbor = subdomain.find_neighbor_rank(face, boundaries)
             if neighbor is None:
                 continue
-            back = subdomains[neighbor].neighbor_rank(face.opposite, boundaries)
+            back = subdomains[neighbor].find_neighbor_rank(face.opposite, boundaries)
             assert back == subdomain.rank
 
 
@@ -67,14 +67,14 @@ def test_a_periodic_axis_wraps_onto_itself_on_one_rank() -> None:
     periodic = FaceCondition(BoundaryCondition.PERIODIC)
     boundaries = Boundaries(left=periodic, right=periodic)
     subdomain = build_subdomains(1)[0]
-    assert subdomain.neighbor_rank(Face.LEFT, boundaries) == subdomain.rank
-    assert subdomain.neighbor_rank(Face.TOP, boundaries) is None
+    assert subdomain.find_neighbor_rank(Face.LEFT, boundaries) == subdomain.rank
+    assert subdomain.find_neighbor_rank(Face.TOP, boundaries) is None
 
 
 def test_shifted_interior_cannot_reach_past_the_ghost_layers() -> None:
     subdomain = build_subdomains(1)[0]
     with pytest.raises(ValueError, match="reaches past"):
-        subdomain.shifted_interior(0, 2)
+        subdomain.shift_interior(0, 2)
 
 
 def test_an_elongated_grid_puts_every_rank_on_its_long_axis() -> None:

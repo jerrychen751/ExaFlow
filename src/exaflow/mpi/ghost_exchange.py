@@ -49,15 +49,15 @@ def post_ghost_exchange(
 
     A face with no neighbor is skipped. A face whose neighbor is this rank itself, which is what a periodic axis carrying a single rank gives, is served by a local copy from the opposite face instead of a message, so a serial periodic run needs no communicator.
 
-    Every message carries the tag of the face it leaves from, and a receive asks for the tag of the opposite face. Without the tag, a periodic axis carrying exactly two ranks makes each rank post two sends and two receives to the same peer, and MPI matches them in order, which fills the low ghost plane with the high one. Within one face the arrays are matched by MPI non-overtaking, so they are always walked in the order `state.arrays()` gives them.
+    Every message carries the tag of the face it leaves from, and a receive asks for the tag of the opposite face. Without the tag, a periodic axis carrying exactly two ranks makes each rank post two sends and two receives to the same peer, and MPI matches them in order, which fills the low ghost plane with the high one. Within one face the arrays are matched by MPI non-overtaking, so they are always walked in the order `state.collect_arrays()` gives them.
     """
 
     exchange = GhostExchange()
     pad = subdomain.grid.num_ghost_layers
-    transverse = subdomain.interior()
+    transverse = subdomain.interior
 
     for face in collect_faces(subdomain.grid.dimension):
-        neighbor = subdomain.neighbor_rank(face, boundaries)
+        neighbor = subdomain.find_neighbor_rank(face, boundaries)
         if neighbor is None:
             continue
         if face.is_low:
@@ -73,7 +73,7 @@ def post_ghost_exchange(
                 (slice(-2 * pad, -pad) if face.is_low else slice(pad, 2 * pad)) if i == axis else transverse[i]
                 for i in range(len(transverse))
             )
-            for array in state.arrays():
+            for array in state.collect_arrays():
                 exchange._deliveries.append((array, destination, array[opposite].copy()))
             continue
 
@@ -82,7 +82,7 @@ def post_ghost_exchange(
 
         send_tag = 2 * axis + (0 if face.is_low else 1)
         recv_tag = 2 * axis + (1 if face.is_low else 0)
-        for array in state.arrays():
+        for array in state.collect_arrays():
             outgoing = np.ascontiguousarray(array[source])
             incoming = np.empty_like(outgoing)
             exchange._requests.append(comm.Isend(outgoing, dest=neighbor, tag=send_tag))

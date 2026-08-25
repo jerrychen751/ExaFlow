@@ -16,9 +16,9 @@ class TimeIntegrator:
             raise ValueError(f"integration order must be 1, 2 or 3, got {order}.")
         self._spatial = spatial
         self._order = order
-        self._rate = template.zeros_like()
-        self._next = template.zeros_like()
-        self._stage = template.zeros_like() if order > 1 else None
+        self._rate = template.allocate_zeros()
+        self._next = template.allocate_zeros()
+        self._stage = template.allocate_zeros() if order > 1 else None
 
     def advance(self, state: FlowState, dt: float) -> FlowState:
         """

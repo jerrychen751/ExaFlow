@@ -65,7 +65,7 @@ class ProcessGrid:
     def dimension(self) -> int:
         return len(self.counts)
 
-    def coords_of(self, rank: int) -> tuple[int, ...]:
+    def compute_coords(self, rank: int) -> tuple[int, ...]:
         """
         The position of this rank in the process grid, in axis order.
         """
@@ -79,7 +79,7 @@ class ProcessGrid:
             remaining //= count
         return tuple(coords)
 
-    def rank_at(self, coords: tuple[int, ...]) -> int:
+    def compute_rank(self, coords: tuple[int, ...]) -> int:
         """
         The rank at this position in the process grid. The caller must keep every coordinate inside the grid; wrapping is the caller's job.
         """

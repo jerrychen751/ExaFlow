@@ -29,7 +29,7 @@ class FlowState:
     def padded_shape(self) -> tuple[int, ...]:
         return tuple(int(length) for length in self.pressure.shape)
 
-    def arrays(self) -> tuple[np.ndarray, ...]:
+    def collect_arrays(self) -> tuple[np.ndarray, ...]:
         """
         Every field array, velocity components in axis order and then pressure. This is the order the ghost exchange and the writers walk them in.
         """
@@ -39,7 +39,7 @@ class FlowState:
     def copy(self) -> FlowState:
         return FlowState(velocity=self.velocity.copy(), pressure=self.pressure.copy())
 
-    def zeros_like(self) -> FlowState:
+    def allocate_zeros(self) -> FlowState:
         return FlowState(velocity=np.zeros_like(self.velocity), pressure=np.zeros_like(self.pressure))
 
     def set_sum(self, base: FlowState, rate: FlowState, factor: float) -> None:
@@ -107,7 +107,7 @@ def _apply_contributions(
     case: Case,
     subdomain: Subdomain,
 ) -> None:
-    interior = array[subdomain.interior()]
+    interior = array[subdomain.interior]
     for contribution in contributions:
         if isinstance(contribution, UniformValue):
             interior += contribution.value

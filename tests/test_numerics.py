@@ -38,7 +38,7 @@ def test_diffusion_reproduces_an_analytic_laplacian() -> None:
 
     Diffusion(Fluid(1.0, 1.0), grid, subdomain).accumulate(state, rate)
 
-    assert np.allclose(rate.velocity[0][subdomain.interior()], 2.0)
+    assert np.allclose(rate.velocity[0][subdomain.interior], 2.0)
 
 
 def test_diffusion_writes_every_real_cell_including_the_block_edges() -> None:
@@ -52,7 +52,7 @@ def test_diffusion_writes_every_real_cell_including_the_block_edges() -> None:
 
     Diffusion(Fluid(1.0, 1.0), grid, subdomain).accumulate(state, rate)
 
-    assert np.count_nonzero(rate.velocity[0][subdomain.interior()] == 0.0) == 0
+    assert np.count_nonzero(rate.velocity[0][subdomain.interior] == 0.0) == 0
 
 
 def test_convection_of_a_uniform_field_is_zero() -> None:
@@ -63,7 +63,7 @@ def test_convection_of_a_uniform_field_is_zero() -> None:
 
     Convection(grid, subdomain).accumulate(state, rate)
 
-    assert np.allclose(rate.velocity[:, *subdomain.interior()], 0.0)
+    assert np.allclose(rate.velocity[:, *subdomain.interior], 0.0)
 
 
 def test_convection_matches_the_upwind_difference_of_a_ramp() -> None:
@@ -75,8 +75,8 @@ def test_convection_matches_the_upwind_difference_of_a_ramp() -> None:
 
     Convection(grid, subdomain).accumulate(state, rate)
 
-    speed = state.velocity[0][subdomain.interior()]
-    assert np.allclose(rate.velocity[0][subdomain.interior()], -speed * 1.0)
+    speed = state.velocity[0][subdomain.interior]
+    assert np.allclose(rate.velocity[0][subdomain.interior], -speed * 1.0)
 
 
 @pytest.mark.parametrize("order,expected", [(1, 1.0), (2, 2.0), (3, 3.0)])
@@ -103,12 +103,12 @@ def test_each_scheme_converges_at_its_design_order(order: int, expected: float) 
         )
         subdomain = build_subdomain(grid)
         state = allocate_state(subdomain, 3)
-        state.velocity[0][subdomain.interior()] = mode[:, None, None]
+        state.velocity[0][subdomain.interior] = mode[:, None, None]
         integrator = TimeIntegrator(SpatialOperator(case, subdomain, None), order, state)
         for _ in range(num_steps):
             state = integrator.advance(state, duration / num_steps)
         exact = np.exp(-decay * duration) * mode
-        errors.append(float(np.abs(state.velocity[0][subdomain.interior()][:, 1, 1] - exact).max()))
+        errors.append(float(np.abs(state.velocity[0][subdomain.interior][:, 1, 1] - exact).max()))
 
     assert np.log2(errors[0] / errors[1]) == pytest.approx(expected, abs=0.25)
 
@@ -130,6 +130,6 @@ def test_convection_leans_into_the_flow_on_each_sign() -> None:
 
         Convection(grid, subdomain).accumulate(state, rate)
 
-        here = coordinate[subdomain.interior()[0]]
+        here = coordinate[subdomain.interior[0]]
         one_sided = 2.0 * here - direction * step
-        assert np.allclose(rate.velocity[1][subdomain.interior()], -direction * one_sided)
+        assert np.allclose(rate.velocity[1][subdomain.interior], -direction * one_sided)

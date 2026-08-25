@@ -18,7 +18,7 @@ def initialize_boundaries(state: FlowState, case: Case, subdomain: Subdomain) ->
     for face in collect_faces(case.dimension):
         if not subdomain.is_on_face(face):
             continue
-        condition = case.boundaries.face(face)
+        condition = case.boundaries.find_face(face)
         ghost = _select(face, _ghost_span(face, pad), case.dimension)
 
         match condition.kind:
@@ -49,7 +49,7 @@ def update_boundaries(state: FlowState, case: Case, subdomain: Subdomain) -> Non
     for face in collect_faces(case.dimension):
         if not subdomain.is_on_face(face):
             continue
-        condition = case.boundaries.face(face)
+        condition = case.boundaries.find_face(face)
         ghost = _select(face, _ghost_span(face, pad), case.dimension)
         edge = _select(face, _edge_span(face, pad), case.dimension)
 

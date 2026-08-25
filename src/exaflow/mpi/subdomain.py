@@ -39,7 +39,7 @@ class Subdomain:
 
     @property
     def coords(self) -> tuple[int, ...]:
-        return self.process_grid.coords_of(self.rank)
+        return self.process_grid.compute_coords(self.rank)
 
     @property
     def bounds(self) -> tuple[tuple[int, int], ...]:
@@ -72,6 +72,7 @@ class Subdomain:
         pad = 2 * self.grid.num_ghost_layers
         return tuple(length + pad for length in self.shape)
 
+    @property
     def global_slices(self) -> tuple[slice, ...]:
         """
         Where this rank's block lands in a full-domain array.
@@ -79,6 +80,7 @@ class Subdomain:
 
         return tuple(slice(start, stop) for start, stop in self.bounds)
 
+    @property
     def interior(self) -> tuple[slice, ...]:
         """
         The real cells inside a padded local array, with the ghost layers stripped off.
@@ -87,7 +89,7 @@ class Subdomain:
         pad = self.grid.num_ghost_layers
         return tuple(slice(pad, -pad) for _ in self.grid.shape)
 
-    def shifted_interior(self, axis: int, offset: int) -> tuple[slice, ...]:
+    def shift_interior(self, axis: int, offset: int) -> tuple[slice, ...]:
         """
         The interior slices with `axis` moved by `offset` grid points, which selects the neighbor of every interior cell along that axis. An offset of -1 reaches into the ghost layer at the low end of the axis and +1 reaches into the ghost layer at the high end, so the caller must complete the ghost exchange first.
 
@@ -98,7 +100,7 @@ class Subdomain:
             raise ValueError(
                 f"offset {offset} reaches past {self.grid.num_ghost_layers} ghost layers."
             )
-        spans = list(self.interior())
+        spans = list(self.interior)
         span = spans[axis]
         stop = span.stop + offset
         spans[axis] = slice(span.start + offset, stop if stop != 0 else None)
@@ -118,7 +120,7 @@ class Subdomain:
             return index == 0
         return index == self.process_grid.counts[face.axis] - 1
 
-    def neighbor_rank(self, face: Face, boundaries: Boundaries) -> int | None:
+    def find_neighbor_rank(self, face: Face, boundaries: Boundaries) -> int | None:
         """
         The rank holding the cells just beyond this face, or None when this face is a domain boundary that does not wrap. A periodic axis wraps, so the first and last ranks on it are neighbors. On a periodic axis carrying a single rank the answer is this rank itself, because the block wraps onto its own opposite face.
         """
@@ -136,4 +138,4 @@ class Subdomain:
             target %= parts
         coords = list(self.coords)
         coords[axis] = target
-        return self.process_grid.rank_at(tuple(coords))
+        return self.process_grid.compute_rank(tuple(coords))

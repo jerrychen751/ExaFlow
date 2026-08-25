@@ -16,10 +16,10 @@ class Diffusion:
     def __init__(self, fluid: Fluid, grid: Grid, subdomain: Subdomain) -> None:
         self._nu = fluid.nu
         self._dimension = grid.dimension
-        self._interior = subdomain.interior()
+        self._interior = subdomain.interior
         self._inverse_square = tuple(1.0 / (step * step) for step in grid.spacing)
-        self._lower = tuple(subdomain.shifted_interior(axis, -1) for axis in range(grid.dimension))
-        self._upper = tuple(subdomain.shifted_interior(axis, +1) for axis in range(grid.dimension))
+        self._lower = tuple(subdomain.shift_interior(axis, -1) for axis in range(grid.dimension))
+        self._upper = tuple(subdomain.shift_interior(axis, +1) for axis in range(grid.dimension))
 
     def accumulate(self, state: FlowState, rate: FlowState) -> None:
         if self._nu == 0.0:

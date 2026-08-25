@@ -24,5 +24,5 @@ def gather_global_array(subdomain: Subdomain, comm: Any | None, block: np.ndarra
     assembled = np.empty(subdomain.grid.shape, dtype=block.dtype)
     for rank, part in enumerate(parts):
         owner = Subdomain(subdomain.grid, subdomain.process_grid, rank)
-        assembled[owner.global_slices()] = part
+        assembled[owner.global_slices] = part
     return assembled

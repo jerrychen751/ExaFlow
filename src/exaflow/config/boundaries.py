@@ -71,15 +71,15 @@ class Boundaries:
 
     def __post_init__(self) -> None:
         for face in (Face.LEFT, Face.TOP, Face.FRONT):
-            here = self.face(face).kind == BoundaryCondition.PERIODIC
-            there = self.face(face.opposite).kind == BoundaryCondition.PERIODIC
+            here = self.find_face(face).kind == BoundaryCondition.PERIODIC
+            there = self.find_face(face.opposite).kind == BoundaryCondition.PERIODIC
             if here != there:
                 raise ValueError(
-                    f"Periodic faces must be paired; got {face.name}={self.face(face).kind.value!r}, "
-                    f"{face.opposite.name}={self.face(face.opposite).kind.value!r}."
+                    f"Periodic faces must be paired; got {face.name}={self.find_face(face).kind.value!r}, "
+                    f"{face.opposite.name}={self.find_face(face.opposite).kind.value!r}."
                 )
 
-    def face(self, face: Face) -> FaceCondition:
+    def find_face(self, face: Face) -> FaceCondition:
         return getattr(self, face.name.lower())
 
     def is_periodic(self, axis: int) -> bool:
@@ -88,4 +88,4 @@ class Boundaries:
         """
 
         low = next(f for f in Face if f.axis == axis and f.is_low)
-        return self.face(low).kind == BoundaryCondition.PERIODIC
+        return self.find_face(low).kind == BoundaryCondition.PERIODIC

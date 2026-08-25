@@ -58,7 +58,7 @@ class Case:
     def __post_init__(self) -> None:
         dimension = self.grid.dimension
         for face in collect_faces(dimension):
-            condition = self.boundaries.face(face)
+            condition = self.boundaries.find_face(face)
             if condition.kind != BoundaryCondition.INFLOW:
                 continue
             if len(condition.velocity) != dimension:

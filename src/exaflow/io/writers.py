@@ -33,7 +33,7 @@ class RankCsvWriter:
         self._subdomain = subdomain
 
     def write(self, label: str, state: FlowState) -> None:
-        interior = self._subdomain.interior()
+        interior = self._subdomain.interior
         velocity = np.stack([state.velocity[axis][interior] for axis in range(state.dimension)])
         origin = tuple(start for start, _ in self._subdomain.bounds)
         text = format_field_csv(velocity, state.pressure[interior], origin)
@@ -52,7 +52,7 @@ class TotalCsvWriter:
         self._comm = comm
 
     def write(self, label: str, state: FlowState) -> None:
-        interior = self._subdomain.interior()
+        interior = self._subdomain.interior
         gathered = [
             gather_global_array(self._subdomain, self._comm, state.velocity[axis][interior])
             for axis in range(state.dimension)
@@ -91,7 +91,7 @@ class VtkWriter:
         except ImportError as error:
             raise ImportError("VTK output needs the 'pyevtk' package.") from error
 
-        interior = self._subdomain.interior()
+        interior = self._subdomain.interior
         gathered = [
             gather_global_array(self._subdomain, self._comm, state.velocity[axis][interior])
             for axis in range(state.dimension)
