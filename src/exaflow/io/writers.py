@@ -12,6 +12,28 @@ from ..mpi.subdomain import Subdomain
 from .csv import format_field_csv, write_text_atomically
 
 
+def gather_domain_fields(
+    subdomain: Subdomain,
+    comm: Any | None,
+    state: FlowState,
+) -> tuple[list[np.ndarray], np.ndarray] | None:
+    """
+    Assemble every field on rank 0 as (velocity components in axis order, pressure), with the ghost layers stripped, or None on every other rank.
+
+    This is a collective call: every rank must reach it, because the gather reduces across all of them.
+    """
+
+    interior = subdomain.interior
+    components = [
+        gather_global_array(subdomain, comm, state.velocity[axis][interior])
+        for axis in range(state.dimension)
+    ]
+    pressure = gather_global_array(subdomain, comm, state.pressure[interior])
+    if pressure is None or any(part is None for part in components):
+        return None
+    return [part for part in components if part is not None], pressure
+
+
 class Writer(Protocol):
     """
     One output format. `frequency` is the interval in steps, or -1 to write only when the solver asks directly. `write` is collective: every rank must call it, because a writer that assembles the full domain reduces across ranks.
@@ -52,15 +74,10 @@ class TotalCsvWriter:
         self._comm = comm
 
     def write(self, label: str, state: FlowState) -> None:
-        interior = self._subdomain.interior
-        gathered = [
-            gather_global_array(self._subdomain, self._comm, state.velocity[axis][interior])
-            for axis in range(state.dimension)
-        ]
-        pressure = gather_global_array(self._subdomain, self._comm, state.pressure[interior])
-        components = [part for part in gathered if part is not None]
-        if pressure is None or len(components) != state.dimension:
+        assembled = gather_domain_fields(self._subdomain, self._comm, state)
+        if assembled is None:
             return
+        components, pressure = assembled
         text = format_field_csv(np.stack(components), pressure, (0,) * self._subdomain.grid.dimension)
         write_text_atomically(os.path.join(self._directory, f"{label}_Total.csv"), text)
 
@@ -91,15 +108,10 @@ class VtkWriter:
         except ImportError as error:
             raise ImportError("VTK output needs the 'pyevtk' package.") from error
 
-        interior = self._subdomain.interior
-        gathered = [
-            gather_global_array(self._subdomain, self._comm, state.velocity[axis][interior])
-            for axis in range(state.dimension)
-        ]
-        pressure = gather_global_array(self._subdomain, self._comm, state.pressure[interior])
-        components = [part for part in gathered if part is not None]
-        if pressure is None or len(components) != state.dimension:
+        assembled = gather_domain_fields(self._subdomain, self._comm, state)
+        if assembled is None:
             return
+        components, pressure = assembled
 
         axes = [
             np.linspace(0.0, float(span), int(count))
