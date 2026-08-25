@@ -43,6 +43,8 @@ def update_boundaries(state: FlowState, case: Case, subdomain: Subdomain) -> Non
     Refresh the zero-gradient half of each boundary condition in the ghost layers of every global domain face this rank owns. Call once per stage, after the ghost exchange completes.
 
     A wall or inflow face fixes velocity and lets pressure float, so pressure is copied outward from the first real layer. An outflow face fixes pressure and lets velocity float, so the velocity components are copied instead.
+
+    The source span is kept one element wide so that assigning it into a ghost region of depth `pad` broadcasts over the whole depth.
     """
 
     pad = case.grid.num_ghost_layers
@@ -51,7 +53,8 @@ def update_boundaries(state: FlowState, case: Case, subdomain: Subdomain) -> Non
             continue
         condition = case.boundaries.find_face(face)
         ghost = _select(face, _ghost_span(face, pad), case.dimension)
-        edge = _select(face, _edge_span(face, pad), case.dimension)
+        edge_span = slice(pad, pad + 1) if face.is_low else slice(-pad - 1, -pad)
+        edge = _select(face, edge_span, case.dimension)
 
         match condition.kind:
             case BoundaryCondition.NO_SLIP | BoundaryCondition.SLIP | BoundaryCondition.INFLOW:
@@ -67,14 +70,6 @@ def update_boundaries(state: FlowState, case: Case, subdomain: Subdomain) -> Non
 
 def _ghost_span(face: Face, pad: int) -> slice:
     return slice(0, pad) if face.is_low else slice(-pad, None)
-
-
-def _edge_span(face: Face, pad: int) -> slice:
-    """
-    The outermost real layer, kept one element wide so that assigning it into a ghost region of depth `pad` broadcasts.
-    """
-
-    return slice(pad, pad + 1) if face.is_low else slice(-pad - 1, -pad)
 
 
 def _select(face: Face, span: slice, dimension: int) -> tuple[slice, ...]:

@@ -95,7 +95,9 @@ class Solver:
 
         local_max = state.compute_max_speed()
         if self.comm is not None:
-            local_max = float(self.comm.allreduce(local_max, op=_max_op()))
+            from mpi4py import MPI
+
+            local_max = float(self.comm.allreduce(local_max, op=MPI.MAX))
         return compute_time_step(self.case, local_max)
 
     def run(self, *, write_initial: bool = True) -> FlowState:
@@ -125,9 +127,3 @@ class Solver:
 
         for writer in self.writers:
             writer.write(label, state)
-
-
-def _max_op() -> Any:
-    from mpi4py import MPI
-
-    return MPI.MAX

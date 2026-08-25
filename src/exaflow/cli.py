@@ -26,7 +26,12 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--label", default=None, help="Name for the run folder; defaults to the file stem.")
     arguments, _ = parser.parse_known_args(argv)
 
-    comm = _world_communicator()
+    try:
+        import mpi4py.MPI as mpi
+    except ImportError:
+        comm = None
+    else:
+        comm = mpi.COMM_WORLD
     case = read_case(arguments.case)
     label = arguments.label or Path(arguments.case).stem
     run_directory = create_run_directory(label, comm)
@@ -36,14 +41,6 @@ def main(argv: list[str] | None = None) -> int:
     if solver.rank == 0:
         print(f"Wrote {run_directory}", flush=True)
     return 0
-
-
-def _world_communicator() -> object | None:
-    try:
-        import mpi4py.MPI as mpi
-    except ImportError:
-        return None
-    return mpi.COMM_WORLD
 
 
 if __name__ == "__main__":
