@@ -78,8 +78,9 @@ def test_shifted_interior_cannot_reach_past_the_ghost_layers() -> None:
 
 
 def test_an_elongated_grid_puts_every_rank_on_its_long_axis() -> None:
-    """The factor search used to stop at the square or cube root of the rank count, so it returned
-    a split with more ranks than points on a short axis and Subdomain refused it."""
+    """
+    The factor search used to stop at the square or cube root of the rank count, so it returned a split with more ranks than points on a short axis and Subdomain refused it.
+    """
 
     assert choose_process_grid(8, (100, 2), 1) == (8, 1)
     assert choose_process_grid(64, (1000, 2, 2), 1) == (64, 1, 1)

@@ -74,8 +74,9 @@ def test_writers_produce_the_expected_files() -> None:
 @pytest.mark.skipif(shutil.which("mpiexec") is None, reason="mpiexec is not on PATH")
 @pytest.mark.parametrize("num_procs", [2, 4])
 def test_the_answer_does_not_depend_on_the_rank_count(num_procs: int) -> None:
-    """The property the old solver did not have. Its boundary operators could not tell a global
-    domain face from an internal partition face, so the answer moved with the decomposition."""
+    """
+    The property the old solver did not have. Its boundary operators could not tell a global domain face from an internal partition face, so the answer moved with the decomposition.
+    """
 
     script = REPOSITORY_ROOT / "tests" / "_run_case.py"
     outputs = []

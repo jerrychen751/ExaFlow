@@ -42,8 +42,9 @@ def test_diffusion_reproduces_an_analytic_laplacian() -> None:
 
 
 def test_diffusion_writes_every_real_cell_including_the_block_edges() -> None:
-    """The operator this replaced wrote its faces with a transverse span of 2:-2, so the twelve
-    edges of every block were left at zero. That gap is what made the answer depend on the rank count."""
+    """
+    The operator this replaced wrote its faces with a transverse span of 2:-2, so the twelve edges of every block were left at zero. That gap is what made the answer depend on the rank count.
+    """
 
     grid = Grid((6, 6, 6), (1.0, 1.0, 1.0), 1)
     subdomain = build_subdomain(grid)
@@ -81,9 +82,9 @@ def test_convection_matches_the_upwind_difference_of_a_ramp() -> None:
 
 @pytest.mark.parametrize("order,expected", [(1, 1.0), (2, 2.0), (3, 3.0)])
 def test_each_scheme_converges_at_its_design_order(order: int, expected: float) -> None:
-    """u_j = sin(2*pi*j/NX) is an exact eigenvector of the discrete Laplacian over a wrapped block,
-    so the exact answer is known and the only error left is the time-integration error.
-    Every step stays inside the explicit diffusion limit, or the scheme would simply diverge."""
+    """
+    u_j = sin(2*pi*j/NX) is an exact eigenvector of the discrete Laplacian over a wrapped block, so the exact answer is known and the only error left is the time-integration error. Every step stays inside the explicit diffusion limit, or the scheme would simply diverge.
+    """
 
     points, viscosity = 8, 0.05
     grid = Grid((points, 3, 3), (1.0, 1.0, 1.0), 1)
@@ -114,9 +115,9 @@ def test_each_scheme_converges_at_its_design_order(order: int, expected: float) 
 
 
 def test_convection_leans_into_the_flow_on_each_sign() -> None:
-    """A fixed backward difference is unconditionally unstable where the velocity is negative, and
-    compute_time_step cannot see it because it only looks at |u|. A quadratic profile separates the
-    two one-sided differences: forward gives 2x + h where backward gives 2x - h."""
+    """
+    A fixed backward difference is unconditionally unstable where the velocity is negative, and compute_time_step cannot see it because it only looks at |u|. A quadratic profile separates the two one-sided differences: forward gives 2x + h where backward gives 2x - h.
+    """
 
     grid = Grid((8, 4, 4), (1.0, 1.0, 1.0), 1)
     subdomain = build_subdomain(grid)

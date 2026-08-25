@@ -1,5 +1,6 @@
-"""Run a fixed case and write it to the directory named on the command line. Used by the
-rank-count independence test, which runs this under mpiexec at several rank counts."""
+"""
+Run a fixed case and write it to the directory named on the command line. Used by the rank-count independence test, which runs this under mpiexec at several rank counts.
+"""
 
 from __future__ import annotations
 
