@@ -5,7 +5,7 @@ from typing import Any, Protocol
 from ..boundary_application import update_boundaries
 from ..config.case import Case
 from ..fields import FlowState
-from ..mpi.ghost_exchange import post_ghost_exchange
+from ..mpi.ghost_exchange import GhostExchange
 from ..mpi.subdomain import Subdomain
 from .convection import Convection
 from .diffusion import Diffusion
@@ -42,7 +42,7 @@ class SpatialOperator:
     def __init__(self, case: Case, subdomain: Subdomain, comm: Any | None) -> None:
         self._case = case
         self._subdomain = subdomain
-        self._comm = comm
+        self._exchange = GhostExchange(subdomain, case.boundaries, comm)
         self._operators = build_operators(case, subdomain)
 
     def evaluate(self, state: FlowState, rate: FlowState) -> None:
@@ -52,7 +52,8 @@ class SpatialOperator:
 
         rate.velocity.fill(0.0)
         rate.pressure.fill(0.0)
-        post_ghost_exchange(state, self._subdomain, self._case.boundaries, self._comm).complete()
+        self._exchange.start(state)
+        self._exchange.complete(state)
         update_boundaries(state, self._case, self._subdomain)
         for operator in self._operators:
             operator.accumulate(state, rate)
