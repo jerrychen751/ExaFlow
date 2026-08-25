@@ -19,28 +19,43 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import cg
 
-from ..parameters import SimulationParameters, RankCoords
-from ..boundary_conditions import BoundaryCondition
+from ..config.case import Case
+from ..mpi.subdomain import Subdomain
 
 
 class PoissonSolver:
 
     def __init__(
         self,
-        sim_params: SimulationParameters,
-        rank_coords: RankCoords
+        case: Case,
+        subdomain: Subdomain,
     ) -> None:
+        """
+        Build the discrete Laplacian for the block `subdomain` owns.
+
+        This solver is correct on a single rank only. It factors one dense-structured Laplacian over its own block and never exchanges with a neighbor, so on several ranks each block would be solved as if it were the whole domain. It is not wired into the time loop; `SolverOptions` rejects include_pressure until it is.
+        """
+
         # Destructure simulation parameters
-        self.dx = sim_params.dx
-        self.dy = sim_params.dy
-        self.dz = sim_params.dz
-        self.ng = sim_params.num_ghost_layers
-        self.rho = sim_params.rho
-        self.ndims = sim_params.dimension
-        self.interior_shape = sim_params.domain
+        spacing = case.grid.spacing
+        self.dx = spacing[0]
+        self.dy = spacing[1] if len(spacing) > 1 else None
+        self.dz = spacing[2] if len(spacing) > 2 else None
+        self.ng = case.grid.num_ghost_layers
+        self.rho = case.fluid.rho
+        self.ndims = case.dimension
+        self.interior_shape = subdomain.shape
 
         # Build sparse laplacian matrix based on self.ndims
-        self._laplacian = self._build_laplacian()
+        laplacian = self._build_laplacian()
+
+        # The pure Neumann Laplacian is singular (pressure is only defined up to a constant).
+        pinned = laplacian.tolil()
+        pinned[0, :] = 0
+        pinned[0, 0] = 1.0
+        self._laplacian = pinned.tocsr()
+
+        self._p_flat_prev: np.ndarray | None = None
 
     def _compute_divergence(
             self,
@@ -207,18 +222,14 @@ class PoissonSolver:
         rhs_flat = rhs.ravel()
 
         # Step 3: Pin one pressure value to remove nullspace singularity.
-        # The pure Neumann Laplacian is singular (pressure is only defined up to a constant).
         # Setting rhs[0] = 0 with the corresponding row zeroed + diagonal=1 fixes p[0] = 0.
         rhs_flat[0] = 0.0
-        L = self._laplacian.tolil()
-        L[0, :] = 0
-        L[0, 0] = 1.0
-        L = L.tocsr()
 
         # Step 4: Solve with conjugate gradient
-        p_flat, info = cg(L, rhs_flat)
+        p_flat, info = cg(self._laplacian, rhs_flat, x0=self._p_flat_prev)
         if info != 0:
             raise RuntimeError(f"Conjugate gradient solver did not converge (info={info})")
+        self._p_flat_prev = p_flat.copy()
 
         # Step 5: Reshape back to grid dimensions
         return p_flat.reshape(self.interior_shape)

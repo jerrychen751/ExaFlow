@@ -1,51 +1,65 @@
 # Numerics
 
-This package contains the finite difference operators and time integration for the solver.
+Finite difference operators and time integration.
 
 ## Array conventions
 
-The solver uses four field arrays: `u`, `v`, `w` (velocity) and `p` (pressure). All are `np.ndarray`.
+The solver carries one `FlowState` per time level (`src/exaflow/fields.py`). It holds two arrays:
 
-| Array | Physical meaning |
-|-------|-----------------|
-| `u` | Velocity in the x-direction |
-| `v` | Velocity in the y-direction |
-| `w` | Velocity in the z-direction |
-| `p` | Pressure |
+| Field | Shape | Meaning |
+|-------|-------|---------|
+| `velocity` | `(dimension, *padded_shape)` | `velocity[a]` is the velocity along axis `a` |
+| `pressure` | `(*padded_shape)` | pressure |
 
-### Indexing: axis 0 = x, axis 1 = y, axis 2 = z
+Axis 0 is x, axis 1 is y, axis 2 is z. So `velocity[0][3, 7, 2]` is the x-velocity at grid point (x=3, y=7, z=2), and `velocity[1]` is what older code called `v`.
 
-```
-u[i, j, k]
-  ^  ^  ^
-  x  y  z
-```
-
-- `u[3, 7, 2]` is the x-velocity at grid point (x=3, y=7, z=2).
-- `u[:, 0, :]` is a slice of x-velocities along the entire x-z plane at y=0.
+Velocity components share one array with a leading component axis. An operator loops over that axis instead of repeating itself once per component, which is why `convection.py` and `diffusion.py` each hold a single stencil.
 
 ### Ghost layers
 
-Arrays include ghost cells padded around the real domain. With `ng` ghost layers:
+Every array a rank works on is padded by `grid.num_ghost_layers` at each end of every axis:
 
 ```
-axis length = ng + n_real + ng
-interior    = array[ng:-ng, ...]    (strips ghost cells)
+axis length = ng + n_local + ng
 ```
 
-For example, a 50x50x50 domain with `ng=1` gives arrays of shape `(52, 52, 52)`.
+Never write these index rules by hand. `Subdomain` owns them:
+
+| Call | Gives |
+|------|-------|
+| `subdomain.padded_shape` | the shape to allocate |
+| `subdomain.interior()` | the real cells, ghost layers stripped |
+| `subdomain.shifted_interior(axis, offset)` | each real cell's neighbor along `axis` |
+| `subdomain.is_on_face(face)` | whether this rank owns that face of the **global** domain |
+
+`is_on_face` is the one to be careful with. A one-sided stencil or a boundary condition is correct only where it returns `True`. Everywhere else the face is an internal partition face and the ghost layer already holds the neighboring rank's data. Applying a domain-face rule there makes the answer depend on how many ranks the run used.
 
 ### Dimensions
 
-- **1D**: arrays have shape `(nx,)`, only `u` is active
-- **2D**: arrays have shape `(nx, ny)`, `u` and `v` are active
-- **3D**: arrays have shape `(nx, ny, nz)`, all three velocity components are active
+Operators are written for any of 1D, 2D and 3D. They read `grid.dimension` and loop over axes, so there is no per-dimension branch and no `_3d` suffix.
 
-Inactive velocity arrays still exist but remain zero.
+## Writing an operator
+
+An operator accumulates one term of the right-hand side:
+
+```python
+class Operator(Protocol):
+    def accumulate(self, state: FlowState, rate: FlowState) -> None: ...
+```
+
+Rules:
+
+- **Add, never assign.** Another term may already have written this cell.
+- **Write the rate, not the increment.** Leave the time step to the integrator, which multiplies by `dt`.
+- **Cover every real cell with the same stencil.** Do not special-case faces. A face slab whose transverse span is narrower than the interior leaves the block edges unwritten, which is exactly the fault that made this solver rank-dependent.
+- **Assume the ghost layers are current.** `SpatialOperator` completes the exchange and refreshes the boundary conditions before any operator runs.
+
+Register it in `build_operators` in `operators.py`.
 
 ## Modules
 
-- `time_step.py` - Runge-Kutta time integration (orders 1-3) and the spatial operator that orchestrates convection, diffusion, and ghost exchanges
-- `convection_3d.py` - Explicit advection operator (central and upwind schemes)
-- `diffusion_3d.py` - Explicit viscous operator (central difference Laplacian)
-- `pressure_poisson.py` - Pressure Poisson solver (in progress)
+- `operators.py` - the `Operator` protocol, `build_operators`, and `SpatialOperator`, which sequences the ghost exchange, the boundary refresh and the terms
+- `convection.py` - first-order upwind `(u dot grad) u`
+- `diffusion.py` - second-order central `nu * laplacian(u)`
+- `time_step.py` - `TimeIntegrator`, Runge-Kutta orders 1 to 3
+- `pressure_poisson.py` - Chorin projection, **single rank only and not wired into the time loop**; `SolverOptions` rejects `include_pressure=True` until it is
