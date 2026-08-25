@@ -16,6 +16,7 @@ from .csv_loader import load_total_csv_to_imagedata
 from .streaming import StreamingServer, DEFAULT_STREAMING_PORT
 from .sim_parameters_dialog import SimulationParametersDialog, simulation_values_to_xml
 from .settings_dialog import SettingsDialog, SessionSettings
+from ..io.storage import resolve_output_root
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -123,13 +124,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Output directory (for watcher)
         self._output_directory_input = QtWidgets.QLineEdit(controls)
-        self._output_directory_input.setText(os.path.join(default_root, "out"))
+        self._output_directory_input.setText(resolve_output_root())
         self._output_directory_browse_button = QtWidgets.QPushButton("Browse…", controls)
         self._output_directory_browse_button.clicked.connect(self._browse_output_directory)
         output_directory_row = QtWidgets.QHBoxLayout()
         output_directory_row.addWidget(self._output_directory_input)
         output_directory_row.addWidget(self._output_directory_browse_button)
-        form.addRow("Output dir", output_directory_row)
+        form.addRow("Output root", output_directory_row)
 
         # Auto-load latest
         controls_layout.addLayout(form)
@@ -268,14 +269,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._append_log(f"[{self._now()}] MPI ranks {mpi_processes} from the main window replaced the dialog value {dialog_ranks}; the decomposition may be refactorized.")
             self._append_log(f"[{self._now()}] GUI parameters saved to {gui_xml_path}")
         elif self._gui_parameters and not self._script_allows_gui_parameters:
-            self._append_log("GUI parameters ignored: script defines its own SimulationParameters or loads XML.")
+            self._append_log("GUI parameters ignored: the script accepts no --input-xml argument.")
 
         self._log_output.clear()
         # Run the chosen script directly; scripts include a small import bootstrap for relative imports
         extra_str = " ".join(extra_script_args)
         display_tail = f"{os.path.basename(script_path)} {extra_str}".strip()
-        display_command = f"mpirun -np {mpi_processes} {sys.executable} {display_tail}"
-        launch_arguments = ["-np", str(mpi_processes), sys.executable, script_path]
+        interpreter_arguments = [sys.executable, "--run-script"] if getattr(sys, "frozen", False) else [sys.executable]
+        display_command = f"mpirun -np {mpi_processes} {' '.join(interpreter_arguments)} {display_tail}"
+        launch_arguments = ["-np", str(mpi_processes), *interpreter_arguments, script_path]
         launch_arguments.extend(extra_script_args)
         self._append_log(f"[{self._now()}] Starting: {display_command}")
 
@@ -292,6 +294,7 @@ class MainWindow(QtWidgets.QMainWindow):
         existing_path = environment.value("PYTHONPATH", "")
         separator = ":" if existing_path else ""
         environment.insert("PYTHONPATH", f"{package_source_root}{separator}{existing_path}")
+        environment.insert("EXAFLOW_OUTPUT_ROOT", self._output_directory_input.text().strip() or resolve_output_root())
         self._simulation_process.setProcessEnvironment(environment)
         self._simulation_process.start(program, args)
 
@@ -424,31 +427,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_params_status()
 
     def _script_supports_gui_parameters(self, script_path: str) -> bool:
+        """
+        Report whether the chosen script accepts a case file on the command line, which is the contract the GUI needs to pass its parameters through.
+
+        This looks for the argparse flag the script declares, not for what the script means. A script that builds its own Case in code declares no flag and is left alone.
+        """
+
         if not script_path or not os.path.isfile(script_path):
             return False
         try:
             text = Path(script_path).read_text(encoding="utf-8")
         except Exception:
             return False
-        lowered = text.lower()
-
-        # Hard disable when the script manually instantiates SimulationParameters.
-        if "simulationparameters(" in lowered:
-            return False
-
-        uses_cli_xml = "--input-xml" in text
-        loads_xml = "simulationparametersfromxml(" in lowered or ".xml" in lowered
-
-        # Allow scripts that expect the GUI to pass an XML path via --input-xml.
-        if loads_xml and not uses_cli_xml:
-            return False
-
-        return True
+        return "--input-xml" in text or "--case" in text
 
     def _update_params_status(self) -> None:
         if not self._script_allows_gui_parameters:
             self._params_button.setEnabled(False)
-            self._params_status.setText("Disabled: script defines its own parameters")
+            self._params_status.setText("Disabled: script takes no --input-xml")
             return
         self._params_button.setEnabled(True)
         if self._gui_parameters is None:

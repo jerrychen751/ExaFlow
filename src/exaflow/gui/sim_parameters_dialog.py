@@ -3,11 +3,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 import xml.etree.ElementTree as ET
-from xml.dom import minidom
 
 from PySide6 import QtCore, QtWidgets
 
 from ..boundary_conditions import BoundaryCondition, parse_boundary_condition
+from ..config import (
+    Boundaries,
+    Case,
+    Face,
+    FaceCondition,
+    Fluid,
+    Grid,
+    OutputControl,
+    SolverOptions,
+    TimeControl,
+)
+from ..config.case_xml import parse_initial_conditions, write_case
 
 
 DEFAULT_INITIAL_CONDITIONS_XML = """<InitialConditions>
@@ -149,7 +160,9 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         tabs.addTab(self._build_output_tab(), "Output & Misc")
         tabs.addTab(self._build_initial_conditions_tab(), "Initial Conditions")
 
-        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
@@ -199,12 +212,12 @@ class SimulationParametersDialog(QtWidgets.QDialog):
 
         self._bool_fields["include_convection"] = QtWidgets.QCheckBox("Include convection")
         form.addRow(self._bool_fields["include_convection"])
-        self._combo_fields["convection_scheme"] = self._create_scheme_combo(["Upwind", "CentralDifference", "Hybrid"])
+        self._combo_fields["convection_scheme"] = self._create_scheme_combo(["Upwind"])
         form.addRow("Convection scheme", self._combo_fields["convection_scheme"])
 
         self._bool_fields["include_diffusion"] = QtWidgets.QCheckBox("Include diffusion")
         form.addRow(self._bool_fields["include_diffusion"])
-        self._combo_fields["viscous_scheme"] = self._create_scheme_combo(["CentralDifference", "Upwind", "Hybrid"])
+        self._combo_fields["viscous_scheme"] = self._create_scheme_combo(["CentralDifference"])
         form.addRow("Viscous scheme", self._combo_fields["viscous_scheme"])
 
         self._bool_fields["include_pressure"] = QtWidgets.QCheckBox("Include pressure")
@@ -331,7 +344,6 @@ class SimulationParametersDialog(QtWidgets.QDialog):
     @staticmethod
     def _create_scheme_combo(options: List[str]) -> QtWidgets.QComboBox:
         combo = QtWidgets.QComboBox()
-        combo.setEditable(True)
         combo.addItems(options)
         return combo
 
@@ -462,90 +474,70 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self.accept()
 
 
-def _add_text(parent: ET.Element, tag: str, value: Any) -> ET.Element:
-    elem = ET.SubElement(parent, tag)
-    elem.text = str(value)
-    return elem
+def build_case_from_values(values: Dict[str, Any]) -> Case:
+    """
+    Build a Case from the dialog's value dictionary. Raises ValueError or NotImplementedError when the form describes a case the solver rejects, so the dialog reports the fault instead of writing an XML file that fails later at run time.
 
+    The rank counts in the dialog are ignored here. The rank arrangement follows the communicator the run is launched with.
+    """
 
-def _bool_text(value: bool) -> str:
-    return "True" if value else "False"
+    counts = [int(n) for n in values["domain"]]
+    spans = [float(v) for v in values["size"]]
+    dimension = sum(1 for n in counts if n > 0)
+    if dimension == 0:
+        raise ValueError("The domain needs a positive nx.")
 
-
-def _prettify(element: ET.Element) -> str:
-    rough_string = ET.tostring(element, encoding="utf-8")
-    parsed = minidom.parseString(rough_string)
-    return parsed.toprettyxml(indent="  ")
-
-
-def simulation_values_to_xml(values: Dict[str, Any]) -> str:
-    """Convert dialog values to an InputTemplate-compatible XML string."""
-    root = ET.Element("Simulation")
-
-    fluid = ET.SubElement(root, "FluidProperties")
-    _add_text(fluid, "Rho", values["rho"])
-    _add_text(fluid, "Nu", values["nu"])
-
-    grid = ET.SubElement(root, "GridProperties")
-    size = ET.SubElement(grid, "Size")
-    _add_text(size, "Length", values["size"][0])
-    _add_text(size, "Width", values["size"][1])
-    _add_text(size, "Height", values["size"][2])
-
-    domain = ET.SubElement(grid, "Domain")
-    _add_text(domain, "nx", values["domain"][0])
-    _add_text(domain, "ny", values["domain"][1])
-    _add_text(domain, "nz", values["domain"][2])
-
-    _add_text(grid, "nt", values["nt"])
-    _add_text(grid, "numGhosts", values["num_ghost_layers"])
-    _add_text(grid, "CFL", values["cfl"])
+    faces = {}
+    for face in Face:
+        key = face.name.lower()
+        kind = parse_boundary_condition(str(values[f"{key}_wall"]))
+        velocity: tuple[float, ...] = ()
+        pressure = 0.0
+        if kind == BoundaryCondition.INFLOW:
+            inflow = values[f"{key}_inflow"]
+            velocity = tuple(float(inflow[name]) for name in ("u", "v", "w")[:dimension])
+        if kind == BoundaryCondition.OUTFLOW:
+            pressure = float(values[f"{key}_outflow"]["p"])
+        faces[key] = FaceCondition(kind=kind, velocity=velocity, pressure=pressure)
 
     initial_xml = values.get("initial_conditions_xml") or DEFAULT_INITIAL_CONDITIONS_XML
     try:
         initial_element = ET.fromstring(initial_xml)
     except ET.ParseError:
         initial_element = ET.fromstring(DEFAULT_INITIAL_CONDITIONS_XML)
-    root.append(initial_element)
 
-    boundary = ET.SubElement(root, "BoundaryConditions")
-    names = [
-        ("left", "Left"),
-        ("right", "Right"),
-        ("top", "Top"),
-        ("bottom", "Bottom"),
-        ("front", "Front"),
-        ("back", "Back"),
-    ]
-    for key, title in names:
-        _add_text(boundary, f"{title}Wall", values[f"{key}_wall"])
-        inflow = ET.SubElement(boundary, f"{title}Inflow")
-        inflow_values = values[f"{key}_inflow"]
-        _add_text(inflow, "u", inflow_values["u"])
-        _add_text(inflow, "v", inflow_values["v"])
-        _add_text(inflow, "w", inflow_values["w"])
-        outflow = ET.SubElement(boundary, f"{title}Outflow")
-        outflow_values = values[f"{key}_outflow"]
-        _add_text(outflow, "p", outflow_values["p"])
+    return Case(
+        fluid=Fluid(rho=float(values["rho"]), nu=float(values["nu"])),
+        grid=Grid(
+            shape=tuple(counts[:dimension]),
+            extent=tuple(spans[:dimension]),
+            num_ghost_layers=int(values["num_ghost_layers"]),
+        ),
+        time=TimeControl(
+            num_steps=int(values["nt"]),
+            cfl=float(values["cfl"]),
+            integration_order=int(values["time_integration_order"]),
+        ),
+        boundaries=Boundaries(**faces),
+        initial=parse_initial_conditions(initial_element, dimension),
+        solver=SolverOptions(
+            include_convection=bool(values["include_convection"]),
+            include_diffusion=bool(values["include_diffusion"]),
+            include_pressure=bool(values["include_pressure"]),
+            convection_scheme=str(values["convection_scheme"]),
+            viscous_scheme=str(values["viscous_scheme"]),
+        ),
+        outputs=OutputControl(
+            total_csv_frequency=int(values["total_csv_frequency"]),
+            partial_csv_frequency=int(values["partial_csv_frequency"]),
+            vtk_frequency=int(values["vtk_frequency"]),
+        ),
+    )
 
-    parallel = ET.SubElement(root, "ParallelizationProperties")
-    _add_text(parallel, "numProcs", values["num_procs"])
-    _add_text(parallel, "numProcsX", values["num_procs_x"])
-    _add_text(parallel, "numProcsY", values["num_procs_y"])
-    _add_text(parallel, "numProcsZ", values["num_procs_z"])
 
-    solver = ET.SubElement(root, "SolverProperties")
-    _add_text(solver, "IncludeConvectionEffects", _bool_text(values["include_convection"]))
-    _add_text(solver, "ConvectionScheme", values["convection_scheme"])
-    _add_text(solver, "IncludeViscousEffects", _bool_text(values["include_diffusion"]))
-    _add_text(solver, "ViscousScheme", values["viscous_scheme"])
-    _add_text(solver, "TimeIntegrationOrder", values["time_integration_order"])
-    _add_text(solver, "IncludePressureEffects", _bool_text(values["include_pressure"]))
+def simulation_values_to_xml(values: Dict[str, Any]) -> str:
+    """
+    Render the dialog's values as input XML. The document is produced by `write_case`, the same writer the rest of the project uses, so the dialog cannot drift from the reader.
+    """
 
-    output = ET.SubElement(root, "OutputProperties")
-    _add_text(output, "WriteTotalVTKFrequency", values["vtk_frequency"])
-    _add_text(output, "WriteTotalCSVFrequency", values["total_csv_frequency"])
-    _add_text(output, "WritePartialCSVFrequency", values["partial_csv_frequency"])
-
-    return _prettify(root)
-
+    return write_case(build_case_from_values(values))

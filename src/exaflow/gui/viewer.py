@@ -9,7 +9,7 @@ import pyvista as pv
 from pyvistaqt import QtInteractor  # type: ignore
 
 import numpy as np
-import vtk
+import vtk  # type: ignore[import-untyped]
 
 from .csv_loader import load_total_csv_to_imagedata
 
@@ -23,7 +23,7 @@ class PyVistaViewer(QtWidgets.QFrame):
 
         # Embedded PyVista plotter
         self._plotter = QtInteractor(self)  # type: ignore
-        self._plotter.set_background("slategray")
+        self._plotter.set_background("slategray")  # type: ignore[arg-type]
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -57,7 +57,7 @@ class PyVistaViewer(QtWidgets.QFrame):
 
         # Build orientation widget (disabled/enabled via toggle)
         if self._show_coordinate_axes:
-            self._coordinate_axes_actor = self._plotter.add_axes()
+            self._coordinate_axes_actor = self._plotter.add_axes()  # type: ignore[call-arg]
 
     # ------------------ Public API ------------------
     def clear(self) -> None:
@@ -71,7 +71,7 @@ class PyVistaViewer(QtWidgets.QFrame):
             self._domain_outline_actor = None
 
         # Remove cube axes
-        self._plotter.remove_bounds_axes()
+        self._plotter.remove_bounds_axes()  # type: ignore[call-arg]
         self._cube_axes = None
 
         # Remove vector glyphs
@@ -81,7 +81,7 @@ class PyVistaViewer(QtWidgets.QFrame):
 
         # Orientation marker visibility per toggle
         if self._show_coordinate_axes and self._coordinate_axes_actor is None:
-            self._coordinate_axes_actor = self._plotter.add_axes()
+            self._coordinate_axes_actor = self._plotter.add_axes()  # type: ignore[call-arg]
         if (not self._show_coordinate_axes) and (self._coordinate_axes_actor is not None):
             self._plotter.remove_actor(self._coordinate_axes_actor)
             self._coordinate_axes_actor = None
@@ -149,8 +149,8 @@ class PyVistaViewer(QtWidgets.QFrame):
         self._main_mesh_actor = self._plotter.add_mesh(
             surface_mesh,
             scalars=scalar_name,
-            cmap=self._color_map,
-            scalar_bar_args=scalar_bar_args,
+            cmap=self._color_map,  # type: ignore[arg-type]
+            scalar_bar_args=scalar_bar_args,  # type: ignore[arg-type]
         )
 
         # Cache and tweak scalar bar appearance
@@ -187,7 +187,7 @@ class PyVistaViewer(QtWidgets.QFrame):
 
         # Update overlays and vectors
         self._update_overlays_and_vectors()
-        self._plotter.reset_camera()
+        self._plotter.reset_camera()  # type: ignore[call-arg]
         self._plotter.render()
 
 
@@ -221,7 +221,7 @@ class PyVistaViewer(QtWidgets.QFrame):
         if self._show_cube_axes:
             if self._cube_axes is None:
                 # Show cube axes with white labels
-                self._plotter.show_bounds(
+                self._plotter.show_bounds(  # type: ignore[call-arg]
                     bounds=self._simulation_data.bounds,
                     location="outer",
                     color="white",
@@ -233,8 +233,8 @@ class PyVistaViewer(QtWidgets.QFrame):
                 self._cube_axes = True
             else:
                 # Refresh bounds if dataset changed
-                self._plotter.remove_bounds_axes()
-                self._plotter.show_bounds(
+                self._plotter.remove_bounds_axes()  # type: ignore[call-arg]
+                self._plotter.show_bounds(  # type: ignore[call-arg]
                     bounds=self._simulation_data.bounds,
                     location="outer",
                     color="white",
@@ -245,7 +245,7 @@ class PyVistaViewer(QtWidgets.QFrame):
                 )
                 self._cube_axes = True
         else:
-            self._plotter.remove_bounds_axes()
+            self._plotter.remove_bounds_axes()  # type: ignore[call-arg]
             self._cube_axes = None
 
     def _find_vector_array_name(self) -> Optional[str]:
@@ -322,7 +322,7 @@ class PyVistaViewer(QtWidgets.QFrame):
                 self._velocity_arrows_actor = self._plotter.add_mesh(
                     arrow_glyphs,
                     scalars=pressure_scalar_name,
-                    cmap=self._color_map,
+                    cmap=self._color_map,  # type: ignore[arg-type]
                     show_scalar_bar=False,
                 )
             else:
@@ -342,7 +342,7 @@ class PyVistaViewer(QtWidgets.QFrame):
         self._show_coordinate_axes = show
         if self._show_coordinate_axes:
             if self._coordinate_axes_actor is None:
-                self._coordinate_axes_actor = self._plotter.add_axes()
+                self._coordinate_axes_actor = self._plotter.add_axes()  # type: ignore[call-arg]
         else:
             if self._coordinate_axes_actor is not None:
                 self._plotter.remove_actor(self._coordinate_axes_actor)
@@ -388,7 +388,7 @@ class PyVistaViewer(QtWidgets.QFrame):
         if center is None:
             return
         self._plotter.camera_position = [position, center, up_vector]
-        self._plotter.reset_camera()
+        self._plotter.reset_camera()  # type: ignore[call-arg]
         self._plotter.render()
 
     def view_pos_x(self) -> None:
