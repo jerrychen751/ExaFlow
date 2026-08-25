@@ -2,55 +2,53 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-import os
+from pathlib import Path
 import shutil
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Create Build directory with templates")
-    parser.add_argument("target_dir", help="Folder where Build/ will be created")
+    parser = argparse.ArgumentParser(description="Create build directory with templates")
+    parser.add_argument("target_dir", help="Folder where build/ will be created")
     args = parser.parse_args()
 
-    examples_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "examples")
-    src_xml = os.path.join(examples_dir, "input_template.xml")
-    src_py = os.path.join(examples_dir, "run_simulation_template.py")
+    simulations_dir = Path(__file__).resolve().parent
+    examples_dir = simulations_dir.parent / "examples"
+    src_xml = examples_dir / "input_template.xml"
+    src_py = examples_dir / "run_simulation_template.py"
     for template_path in (src_xml, src_py):
-        if not os.path.exists(template_path):
-            raise FileNotFoundError(f"Template not found: {os.path.normpath(template_path)}")
+        if not template_path.exists():
+            raise FileNotFoundError(f"Template not found: {template_path}")
 
-    target_root = os.path.abspath(args.target_dir)
-    simulations_dir = os.path.dirname(os.path.abspath(__file__))
-    if os.path.dirname(target_root) != simulations_dir:
-        raise ValueError(f"target_dir must be directly inside {simulations_dir}, because run_simulation.py resolves the repo root as its fourth parent; got {target_root}.")
+    target_root = Path(args.target_dir).resolve()
+    target_root.mkdir(parents=True, exist_ok=True)
 
-    os.makedirs(target_root, exist_ok=True)
+    metadata_path = target_root / "metadata.txt"
+    if not metadata_path.exists():
+        metadata_path.write_text(
+            "Do not modify this file\n"
+            "Created by create_simulation_directories.py\n"
+            "Contains build/ directory with in/ and run_simulation.py\n"
+            "in/ has input.xml where you specify simulation parameters\n"
+            "Output CSVs and VTK files go to one run folder under ~/Documents/ExaFlow\n"
+            "Set EXAFLOW_OUTPUT_ROOT to write those run folders somewhere else\n"
+            "run_simulation.py is the script to run the simulation\n"
+            f"Location: {target_root}\n"
+            f"Date: {datetime.now().strftime('%Y-%m-%d')}\n",
+            encoding="utf-8",
+        )
 
-    metadata_path = os.path.join(target_root, "metadata.txt")
-    if not os.path.exists(metadata_path):
-        with open(metadata_path, "w", encoding="utf-8") as meta_file:
-            meta_file.write("Do not modify this file\n")
-            meta_file.write("Created by create_simulation_directories.py\n")
-            meta_file.write("Contains Build/ directory with in/, out/, and run_simulation.py\n")
-            meta_file.write("in/ has Input.xml where you specify simulation parameters\n")
-            meta_file.write("out/ is where output CSVs and VTK files will be written\n")
-            meta_file.write("run_simulation.py is the script to run the simulation\n")
-            meta_file.write(f"Location: {target_root}\n")
-            meta_file.write(f"Date: {datetime.now().strftime('%Y-%m-%d')}\n")
+    build_dir = target_root / "build"
+    in_dir = build_dir / "in"
 
-    build_dir = os.path.join(target_root, "Build")
-    in_dir = os.path.join(build_dir, "in")
-    out_dir = os.path.join(build_dir, "out")
+    in_dir.mkdir(parents=True, exist_ok=True)
 
-    os.makedirs(in_dir, exist_ok=True)
-    os.makedirs(out_dir, exist_ok=True)
-
-    dst_xml = os.path.join(in_dir, "Input.xml")
-    if not os.path.exists(dst_xml):
+    dst_xml = in_dir / "input.xml"
+    if not dst_xml.exists():
         shutil.copyfile(src_xml, dst_xml)
-        print(f"Copied Input.xml to {dst_xml}")
+        print(f"Copied input.xml to {dst_xml}")
 
-    dst_py = os.path.join(build_dir, "run_simulation.py")
-    if not os.path.exists(dst_py):
+    dst_py = build_dir / "run_simulation.py"
+    if not dst_py.exists():
         shutil.copyfile(src_py, dst_py)
         print(f"Copied run_simulation.py to {dst_py}")
 
