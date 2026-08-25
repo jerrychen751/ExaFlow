@@ -8,8 +8,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-ICON_SIZES = (16, 32, 64, 128, 256, 512, 1024)
-
 
 def render_icon_image(size: int):
     """
@@ -57,7 +55,7 @@ def write_icon_file(icon_path: Path) -> None:
     with tempfile.TemporaryDirectory() as temporary_dir:
         iconset_dir = Path(temporary_dir) / "ExaFlow.iconset"
         iconset_dir.mkdir()
-        for size in ICON_SIZES:
+        for size in (16, 32, 64, 128, 256, 512, 1024):
             image = render_icon_image(size)
             image.save(iconset_dir / f"icon_{size}x{size}.png")
             if size <= 512:

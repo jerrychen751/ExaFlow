@@ -4,8 +4,6 @@ import os
 import runpy
 import sys
 
-MPI_LIBRARY_NAME = "libmpi.40.dylib"
-
 
 def configure_bundled_mpi() -> None:
     """
@@ -22,7 +20,7 @@ def configure_bundled_mpi() -> None:
 
     os.environ.setdefault("OPAL_PREFIX", mpi_root)
     os.environ.setdefault("PRTE_PREFIX", mpi_root)
-    os.environ.setdefault("MPI4PY_LIBMPI", os.path.join(mpi_root, "lib", MPI_LIBRARY_NAME))
+    os.environ.setdefault("MPI4PY_LIBMPI", os.path.join(mpi_root, "lib", "libmpi.40.dylib"))
     os.environ["PATH"] = os.path.join(mpi_root, "bin") + os.pathsep + os.environ.get("PATH", "")
 
 
