@@ -1,4 +1,40 @@
+[project]
+name = "exaflow"
+version = "0.1.0"
+description = "A Python solver for the incompressible Navier-Stokes equations in 1D, 2D, and 3D with MPI parallelization."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy",
+    "mpi4py",
+    "openmpi",
+    "scipy",
+    "pyevtk",
+    "pyside6",
+    "pyvista",
+    "pyvistaqt",
+    "vtk",
+    "Pillow",
+]
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "pytest",
+    "pyside6-stubs",
+    "scipy-stubs",
+    "pyinstaller",
+]
+
+[project.scripts]
+exaflow = "exaflow.cli:main"
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+exaflow = ["py.typed"]

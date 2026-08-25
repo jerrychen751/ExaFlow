@@ -18,9 +18,12 @@
 
 # Build directory
 /Build/
+/build/
+/dist/
+packaging/ExaFlow.icns
 /out/
 /in/
 
 # Simulations
-/Simulations/*
-!/Simulations/create_simulation_directories.py
+/simulations/*
+!/simulations/create_simulation_directories.py
