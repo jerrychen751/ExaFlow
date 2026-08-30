@@ -7,7 +7,7 @@ import sys
 
 def configure_bundled_mpi() -> None:
     """
-    Point Open MPI and mpi4py at the copy of Open MPI in Contents/Resources/mpi. mpiexec reads OPAL_PREFIX, prterun reads PRTE_PREFIX, and mpi4py dlopens the file named in MPI4PY_LIBMPI. Without these three variables the bundled app finds no MPI library and every import of mpi4py fails. This does nothing outside a frozen bundle, where the virtual environment already supplies Open MPI.
+    Point Open MPI and mpi4py at the copy of Open MPI in Contents/Resources/mpi, and overwrite any value the environment already holds, because the bundle runs its own Open MPI and no other. mpiexec reads OPAL_PREFIX, prterun reads PRTE_PREFIX, and mpi4py dlopens the file named in MPI4PY_LIBMPI. Without these three variables the bundled app finds no MPI library and every import of mpi4py fails. An inherited MPI4PY_MPIABI must go, because mpi4py names the ABI from that variable and then dlopens no MPI4PY_LIBMPI at all. This does nothing outside a frozen bundle, where the virtual environment already supplies Open MPI.
     """
 
     if not getattr(sys, "frozen", False):
@@ -18,9 +18,10 @@ def configure_bundled_mpi() -> None:
     if not os.path.isdir(mpi_root):
         return
 
-    os.environ.setdefault("OPAL_PREFIX", mpi_root)
-    os.environ.setdefault("PRTE_PREFIX", mpi_root)
-    os.environ.setdefault("MPI4PY_LIBMPI", os.path.join(mpi_root, "lib", "libmpi.40.dylib"))
+    os.environ["OPAL_PREFIX"] = mpi_root
+    os.environ["PRTE_PREFIX"] = mpi_root
+    os.environ.pop("MPI4PY_MPIABI", None)
+    os.environ["MPI4PY_LIBMPI"] = os.path.join(mpi_root, "lib", "libmpi.40.dylib")
     os.environ["PATH"] = os.path.join(mpi_root, "bin") + os.pathsep + os.environ.get("PATH", "")
 
 

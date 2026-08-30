@@ -86,6 +86,8 @@ def copy_open_mpi(venv_root: Path, app_path: Path) -> int:
         source = Path(os.path.realpath(site_packages / relative_path))
         if not source.is_file():
             continue
+        if not source.is_relative_to(real_venv_root):
+            raise RuntimeError(f"{record_files[0]} lists {relative_path}, which resolves to {source} outside {real_venv_root}. Set UV_LINK_MODE to hardlink or copy, then run `uv sync --reinstall`.")
         destination = mpi_root / source.relative_to(real_venv_root)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
@@ -134,31 +136,48 @@ def main() -> int:
     if not app_path.is_dir():
         raise FileNotFoundError(f"PyInstaller wrote no bundle at {app_path}.")
 
-    copied = copy_open_mpi(venv_root, app_path)
-    print(f"Copied {copied} Open MPI files into {app_path.name}/Contents/Resources/mpi")
-
-    library_paths = [path for path in app_path.rglob("*") if path.is_file() and not path.is_symlink() and path.suffix in (".dylib", ".so")]
-    size_before = sum(path.stat().st_size for path in library_paths)
-    expected_warnings = ("will invalidate the code signature", "replacing existing signature")
     try:
+        copied = copy_open_mpi(venv_root, app_path)
+        print(f"Copied {copied} Open MPI files into {app_path.name}/Contents/Resources/mpi")
+
+        library_paths = [path for path in app_path.rglob("*") if path.is_file() and not path.is_symlink() and path.suffix in (".dylib", ".so")]
+        library_sizes = []
+        expected_warnings = ("will invalidate the code signature", "replacing existing signature")
         for command in (["strip", "-x"], ["codesign", "--force", "--sign", "-"]):
+            library_sizes.append(sum(path.stat().st_size for path in library_paths))
             result = subprocess.run([*command, *library_paths], capture_output=True, text=True)
             if result.returncode != 0:
                 raise RuntimeError(f"{command[0]} failed on the {len(library_paths)} libraries of the bundle: {result.stderr.strip()}")
             for line in result.stderr.splitlines():
                 if not any(warning in line for warning in expected_warnings):
                     print(line)
-        size_after = sum(path.stat().st_size for path in library_paths)
-        print(f"Stripped {len(library_paths)} .dylib and .so files and removed {(size_before - size_after) / 1e6:.0f} MB")
+        size_before_strip, size_after_strip = library_sizes
+        print(f"Stripped {len(library_paths)} .dylib and .so files and removed {(size_before_strip - size_after_strip) / 1e6:.0f} MB")
 
-        subprocess.run(["codesign", "--force", "--sign", "-", str(app_path)], check=True)
+        subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app_path)], check=True)
         subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app_path)], check=True)
-    except Exception:
-        failed_path = app_path.with_name(app_path.name + ".failed")
-        shutil.rmtree(failed_path, ignore_errors=True)
-        app_path.rename(failed_path)
+        print(f"Re-signed {app_path.name}; the Open MPI copy and the strip both invalidated the PyInstaller signature")
+
+        build_dir.mkdir(parents=True, exist_ok=True)
+        smoke_path = build_dir / "smoke_imports.py"
+        smoke_path.write_text(
+            "import os\n"
+            "os.environ['QT_QPA_PLATFORM'] = 'offscreen'\n"
+            "import mpi4py\n"
+            "mpi4py.rc.initialize = False\n"
+            "import exaflow.gui.app, exaflow.numerics.pressure_poisson\n"
+            "import PySide6.QtWidgets, pyvista, pyvistaqt, scipy.sparse, vtk, vtkmodules.all\n"
+            "from mpi4py import MPI\n"
+            "PySide6.QtWidgets.QApplication([])\n"
+            "print('The bundle imports scipy, VTK, PySide6 and', MPI.Get_library_version().split(',')[0])\n"
+        )
+        hostile_environment = {name: os.environ[name] for name in ("HOME", "TMPDIR", "USER", "LANG") if name in os.environ}
+        hostile_environment["PATH"] = "/usr/bin:/bin"
+        hostile_environment["MPI4PY_MPIABI"] = "mpich"
+        subprocess.run([str(app_path / "Contents" / "MacOS" / "ExaFlow"), "--run-script", str(smoke_path)], check=True, timeout=600, env=hostile_environment)
+    except BaseException:
+        shutil.rmtree(app_path, ignore_errors=True)
         raise
-    print(f"Re-signed {app_path.name}; the Open MPI copy and the strip both invalidated the PyInstaller signature")
 
     size_output = subprocess.run(["du", "-sh", str(app_path)], capture_output=True, text=True, check=True)
     print(f"Built {app_path} ({size_output.stdout.split()[0]})")

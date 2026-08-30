@@ -246,13 +246,13 @@ uv run python packaging/build_app.py
 rm -rf /Applications/ExaFlow.app.new && cp -R dist/ExaFlow.app /Applications/ExaFlow.app.new && rm -rf /Applications/ExaFlow.app && mv /Applications/ExaFlow.app.new /Applications/ExaFlow.app
 ```
 
-The build takes a few minutes and leaves 1.3 GB in `dist/`: the 568 MB `ExaFlow.app` bundle, and the 798 MB `ExaFlow` directory that PyInstaller copied it from. It does four things: it draws `packaging/ExaFlow.icns`, it runs PyInstaller with `packaging/ExaFlow.spec`, it copies Open MPI from `.venv` into `Contents/Resources/mpi`, and it removes the local symbols from every `.dylib` and `.so` file in the bundle and signs the bundle again.
+The build takes a few minutes and leaves 1.3 GB in `dist/`: the 568 MB `ExaFlow.app` bundle, and the 798 MB `ExaFlow` directory that PyInstaller copied it from. It does five things: it draws `packaging/ExaFlow.icns`, it runs PyInstaller with `packaging/ExaFlow.spec`, it copies Open MPI from `.venv` into `Contents/Resources/mpi`, it removes the local symbols from every `.dylib` and `.so` file in the bundle and signs the bundle again, and it starts the bundled app once to prove that scipy, VTK, PySide6 and MPI still import.
 
-The command copies to a new name first and removes the old bundle only after that copy succeeds, so a copy that fails leaves the app that works in `/Applications`. A bare `cp -R` writes into the bundle that is already there, so the files of the older build stay and `codesign --verify` then rejects the whole app.
+The build prints that second command when it finishes. It copies to a new name first and removes the old bundle only after that copy succeeds, so a copy that fails leaves the app that works in `/Applications`. A bare `cp -R` writes into the bundle that is already there, so the files of the older build stay and `codesign --verify` then rejects the whole app.
 
 Two details keep MPI working inside the bundle:
 
-- `packaging/entry.py` sets `OPAL_PREFIX`, `PRTE_PREFIX` and `MPI4PY_LIBMPI` to the copied Open MPI before anything imports mpi4py.
+- `packaging/entry.py` sets `OPAL_PREFIX`, `PRTE_PREFIX` and `MPI4PY_LIBMPI` to the copied Open MPI before anything imports mpi4py. It also removes `MPI4PY_MPIABI` from the environment, because mpi4py takes the ABI name from that variable and then dlopens no `MPI4PY_LIBMPI` at all.
 - A frozen bundle holds no separate Python interpreter, so each rank re-runs the app itself: `mpirun -np 4 ExaFlow --run-script <script>`. `main_window.py` adds that argument when `sys.frozen` is set.
 
 Pass `--keep-icon` to skip drawing the icon again.
