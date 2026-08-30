@@ -13,13 +13,20 @@ datas = []
 binaries = []
 hiddenimports = ["vtkmodules.all", "vtkmodules.util.numpy_support", "vtkmodules.qt"]
 hiddenimports += collect_submodules("exaflow")
-for package_name in ("vtkmodules", "pyvista", "pyvistaqt", "pyevtk", "mpi4py", "scipy"):
+for package_name in ("vtkmodules", "pyvista", "pyvistaqt", "pyevtk", "mpi4py"):
     package_datas, package_binaries, package_hiddenimports = collect_all(package_name)
     datas += package_datas
     binaries += package_binaries
     hiddenimports += package_hiddenimports
 
-datas += [(path, "mpi4py") for path in glob.glob(os.path.join(os.path.dirname(mpi4py.__file__), "MPI.*.so"))]
+mpi_extension_paths = [
+    path
+    for path in glob.glob(os.path.join(os.path.dirname(mpi4py.__file__), "MPI.*.so"))
+    if ".mpich." not in os.path.basename(path)
+]
+if not mpi_extension_paths:
+    raise FileNotFoundError(f"No MPI.*.so in {os.path.dirname(mpi4py.__file__)}. Nothing else puts the mpi4py extension in the bundle, and the app cannot import MPI without it.")
+datas += [(path, "mpi4py") for path in mpi_extension_paths]
 
 analysis = Analysis(
     [os.path.join(SPECPATH, "entry.py")],

@@ -90,6 +90,8 @@ def copy_open_mpi(venv_root: Path, app_path: Path) -> int:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
         copied += 1
+    if not (mpi_root / "lib" / "libmpi.40.dylib").is_file():
+        raise FileNotFoundError(f"{record_files[0]} put no lib/libmpi.40.dylib under {mpi_root}. packaging/entry.py sets MPI4PY_LIBMPI to that exact path, and mpi4py loads no MPI library without it.")
     return copied
 
 
@@ -135,9 +137,32 @@ def main() -> int:
     copied = copy_open_mpi(venv_root, app_path)
     print(f"Copied {copied} Open MPI files into {app_path.name}/Contents/Resources/mpi")
 
+    library_paths = [path for path in app_path.rglob("*") if path.is_file() and not path.is_symlink() and path.suffix in (".dylib", ".so")]
+    size_before = sum(path.stat().st_size for path in library_paths)
+    expected_warnings = ("will invalidate the code signature", "replacing existing signature")
+    try:
+        for command in (["strip", "-x"], ["codesign", "--force", "--sign", "-"]):
+            result = subprocess.run([*command, *library_paths], capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"{command[0]} failed on the {len(library_paths)} libraries of the bundle: {result.stderr.strip()}")
+            for line in result.stderr.splitlines():
+                if not any(warning in line for warning in expected_warnings):
+                    print(line)
+        size_after = sum(path.stat().st_size for path in library_paths)
+        print(f"Stripped {len(library_paths)} .dylib and .so files and removed {(size_before - size_after) / 1e6:.0f} MB")
+
+        subprocess.run(["codesign", "--force", "--sign", "-", str(app_path)], check=True)
+        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app_path)], check=True)
+    except Exception:
+        failed_path = app_path.with_name(app_path.name + ".failed")
+        shutil.rmtree(failed_path, ignore_errors=True)
+        app_path.rename(failed_path)
+        raise
+    print(f"Re-signed {app_path.name}; the Open MPI copy and the strip both invalidated the PyInstaller signature")
+
     size_output = subprocess.run(["du", "-sh", str(app_path)], capture_output=True, text=True, check=True)
     print(f"Built {app_path} ({size_output.stdout.split()[0]})")
-    print("Install it with: cp -R dist/ExaFlow.app /Applications/")
+    print("Install it with: rm -rf /Applications/ExaFlow.app.new && cp -R dist/ExaFlow.app /Applications/ExaFlow.app.new && rm -rf /Applications/ExaFlow.app && mv /Applications/ExaFlow.app.new /Applications/ExaFlow.app")
     return 0
 
 

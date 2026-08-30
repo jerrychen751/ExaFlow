@@ -243,10 +243,12 @@ A refactor that should not change the numbers gives byte-identical files. Run it
 
 ```bash
 uv run python packaging/build_app.py
-cp -R dist/ExaFlow.app /Applications/
+rm -rf /Applications/ExaFlow.app.new && cp -R dist/ExaFlow.app /Applications/ExaFlow.app.new && rm -rf /Applications/ExaFlow.app && mv /Applications/ExaFlow.app.new /Applications/ExaFlow.app
 ```
 
-The build takes a few minutes and produces about 856 MB. It does three things: it draws `packaging/ExaFlow.icns`, it runs PyInstaller with `packaging/ExaFlow.spec`, and it copies Open MPI from `.venv` into `Contents/Resources/mpi`.
+The build takes a few minutes and leaves 1.3 GB in `dist/`: the 568 MB `ExaFlow.app` bundle, and the 798 MB `ExaFlow` directory that PyInstaller copied it from. It does four things: it draws `packaging/ExaFlow.icns`, it runs PyInstaller with `packaging/ExaFlow.spec`, it copies Open MPI from `.venv` into `Contents/Resources/mpi`, and it removes the local symbols from every `.dylib` and `.so` file in the bundle and signs the bundle again.
+
+The command copies to a new name first and removes the old bundle only after that copy succeeds, so a copy that fails leaves the app that works in `/Applications`. A bare `cp -R` writes into the bundle that is already there, so the files of the older build stay and `codesign --verify` then rejects the whole app.
 
 Two details keep MPI working inside the bundle:
 
