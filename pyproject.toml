@@ -26,6 +26,17 @@ dev = [
     "pyinstaller",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+    "mpi: launches mpiexec, and is skipped when no launcher is on PATH",
+    "gui: imports the visualization stack (vtk, pyvista, PySide6) and needs no display",
+    "slow: runs a subprocess or marches enough steps to take about a second",
+]
+
 [project.scripts]
 exaflow = "exaflow.cli:main"
 
