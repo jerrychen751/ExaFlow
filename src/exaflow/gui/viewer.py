@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import math
-from PySide6 import QtWidgets
+import traceback
+from PySide6 import QtCore, QtWidgets
 from typing import Optional, Any
 
 import pyvista as pv
@@ -18,6 +19,11 @@ _VTK_SUPPORTS_BOOL_SCALAR_BAR_TOGGLES = hasattr(vtk.vtkScalarBarActor, "SetDrawT
 
 
 class PyVistaViewer(QtWidgets.QFrame):
+    render_failed = QtCore.Signal(str)
+    """
+    Carries the traceback of a step that drew nothing. The viewer has no log of its own, so the window that owns it connects this and reports what the user cannot see on the canvas.
+    """
+
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
 
@@ -422,6 +428,7 @@ class PyVistaViewer(QtWidgets.QFrame):
             if self._velocity_arrows_actor is not None:
                 self._plotter.remove_actor(self._velocity_arrows_actor)
                 self._velocity_arrows_actor = None
+            self.render_failed.emit(f"The velocity arrows were dropped:\n{traceback.format_exc()}")
 
     # ------------------ Public toggles ------------------
     def set_show_axes(self, show: bool) -> None:
