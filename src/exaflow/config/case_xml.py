@@ -204,6 +204,16 @@ def _parse_field_initial(node: ElementTree.Element, dimension: int) -> FieldInit
     return tuple(contributions)
 
 
+def write_initial_conditions(initial: InitialConditions, dimension: int) -> str:
+    """
+    Render the initial conditions as an `<InitialConditions>` XML block, with no XML declaration in front of it. The GUI dialog edits this block as text, so it renders through here and reads back through `parse_initial_conditions`, and the two cannot drift apart.
+    """
+
+    raw = ElementTree.tostring(_write_initial(initial, dimension), encoding="utf-8")
+    pretty = minidom.parseString(raw).toprettyxml(indent="  ")
+    return pretty.split("?>", 1)[-1].strip()
+
+
 def _write_initial(initial: InitialConditions, dimension: int) -> ElementTree.Element:
     node = ElementTree.Element("InitialConditions")
     _put(node, "ReadFromVtrFile", False)

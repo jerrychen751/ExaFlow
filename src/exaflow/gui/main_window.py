@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import os
-import sys
-import glob
 import traceback
 from datetime import datetime
 from PySide6 import QtCore, QtWidgets
-from typing import Optional, Any
+from typing import Optional
 from pathlib import Path
 
 import pyvista as pv
 from .viewer import PyVistaViewer
 from .help_dialog import HelpDialog
 from .streaming import StreamingServer, DEFAULT_STREAMING_PORT
-from .sim_parameters_dialog import SimulationParametersDialog, simulation_values_to_xml
+from .sim_parameters_dialog import SimulationParametersDialog
 from .settings_dialog import SettingsDialog, SessionSettings
+from .simulation_runner import SimulationRunner
+from .result_watcher import LatestResultWatcher
+from .slice_controller import SliceController
+from ..config import Case
+from ..config.case_xml import write_case
 from ..io.storage import resolve_output_root
 
 
@@ -24,30 +27,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("3D Navier–Stokes – GUI")
 
         # Process used to run simulations
-        self._simulation_process = QtCore.QProcess(self)
-        self._simulation_process.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
-        self._simulation_process.readyReadStandardOutput.connect(self._on_process_output)
-        self._simulation_process.finished.connect(self._on_process_finished)
+        self._runner = SimulationRunner(self)
+        self._runner.output.connect(self._append_log)
+        self._runner.finished.connect(self._on_process_finished)
+        self._runner.failed.connect(self._on_process_failed)
 
         # State
-        self._last_loaded_path: Optional[str] = None
-        self._gui_parameters: Optional[dict[str, Any]] = None
+        self._gui_case: Optional[Case] = None
         self._script_allows_gui_parameters: bool = False
         self._session_settings = SessionSettings()
-        self._streaming_active: bool = False
 
         # UI
-        self.viewer: Any = None
         self._build_ui()
 
         # Directory watcher
-        self._autoload_timer = QtCore.QTimer(self)
-        self._autoload_timer.setInterval(self._session_settings.autoload_interval_ms)
-        self._autoload_timer.timeout.connect(self._maybe_autoload_latest)
-        self._autoload_timer.start()
-        
-        # Run autoload immediately on startup
-        self._maybe_autoload_latest()
+        self._watcher = LatestResultWatcher(self._session_settings.autoload_interval_ms, self)
+        self._watcher.found.connect(self._load_file_path)
+        self._refresh_watcher()
 
         # Streaming server for real-time updates
         self._streaming_server: Optional[StreamingServer] = None
@@ -90,7 +86,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._script_path_input = QtWidgets.QLineEdit(controls)
         self._script_browse_button = QtWidgets.QPushButton("Browse…", controls)
         self._script_browse_button.clicked.connect(self._browse_script)
-        self._script_path_input.textChanged.connect(self._on_script_path_changed)
+        self._script_path_input.editingFinished.connect(self._on_script_path_changed)
         script_input_row = QtWidgets.QHBoxLayout()
         script_input_row.addWidget(self._script_path_input)
         script_input_row.addWidget(self._script_browse_button)
@@ -124,6 +120,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Output directory (for watcher)
         self._output_directory_input = QtWidgets.QLineEdit(controls)
         self._output_directory_input.setText(resolve_output_root())
+        self._output_directory_input.editingFinished.connect(self._refresh_watcher)
         self._output_directory_browse_button = QtWidgets.QPushButton("Browse…", controls)
         self._output_directory_browse_button.clicked.connect(self._browse_output_directory)
         output_directory_row = QtWidgets.QHBoxLayout()
@@ -165,8 +162,8 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout.addWidget(self._log_output, 1)
 
         # Right viewer
-        viewer_container: QtWidgets.QWidget
-        self._viewer: PyVistaViewer = PyVistaViewer(central)  # type: ignore
+        self._viewer = PyVistaViewer(central)
+        self._viewer.render_failed.connect(self._append_log)
 
         # Build a right-side layout with a small toolbar for viewer controls
         right = QtWidgets.QWidget(central)
@@ -178,29 +175,29 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._axes_checkbox = QtWidgets.QCheckBox("Axes")
         self._axes_checkbox.setChecked(True)
-        self._axes_checkbox.toggled.connect(lambda v: self._viewer.set_show_axes(bool(v)))  # type: ignore
+        self._axes_checkbox.toggled.connect(lambda v: self._viewer.set_show_axes(bool(v)))
         toolbar.addWidget(self._axes_checkbox)
 
         self._outline_checkbox = QtWidgets.QCheckBox("Outline")
         self._outline_checkbox.setChecked(True)
-        self._outline_checkbox.toggled.connect(lambda v: self._viewer.set_show_outline(bool(v)))  # type: ignore
+        self._outline_checkbox.toggled.connect(lambda v: self._viewer.set_show_outline(bool(v)))
         toolbar.addWidget(self._outline_checkbox)
 
         self._cube_axes_checkbox = QtWidgets.QCheckBox("Cube Axes")
         self._cube_axes_checkbox.setChecked(True)
-        self._cube_axes_checkbox.toggled.connect(lambda v: self._viewer.set_show_cube_axes(bool(v)))  # type: ignore
+        self._cube_axes_checkbox.toggled.connect(lambda v: self._viewer.set_show_cube_axes(bool(v)))
         toolbar.addWidget(self._cube_axes_checkbox)
 
         self._vectors_checkbox = QtWidgets.QCheckBox("Vectors")
         self._vectors_checkbox.setChecked(False)
-        self._vectors_checkbox.toggled.connect(lambda v: self._viewer.set_show_vectors(bool(v)))  # type: ignore
+        self._vectors_checkbox.toggled.connect(lambda v: self._viewer.set_show_vectors(bool(v)))
         toolbar.addWidget(self._vectors_checkbox)
 
         toolbar.addWidget(QtWidgets.QLabel("Stride"))
         self._vector_stride_spinbox = QtWidgets.QSpinBox()
         self._vector_stride_spinbox.setRange(1, 50)
         self._vector_stride_spinbox.setValue(4)
-        self._vector_stride_spinbox.valueChanged.connect(lambda n: self._viewer.set_vector_stride(int(n)))  # type: ignore
+        self._vector_stride_spinbox.valueChanged.connect(lambda n: self._viewer.set_vector_stride(int(n)))
         toolbar.addWidget(self._vector_stride_spinbox)
 
         toolbar.addStretch(1)
@@ -217,45 +214,17 @@ class MainWindow(QtWidgets.QMainWindow):
             b.clicked.connect(getattr(self._viewer, meth))
             toolbar.addWidget(b)
 
-        slice_toolbar = QtWidgets.QHBoxLayout()
-
-        self._slice_checkbox = QtWidgets.QCheckBox("Slice")
-        self._slice_checkbox.setChecked(False)
-        self._slice_checkbox.toggled.connect(self._on_slice_toggled)
-        slice_toolbar.addWidget(self._slice_checkbox)
-        slice_toolbar.addSpacing(16)
-
-        slice_toolbar.addWidget(QtWidgets.QLabel("Axis"))
-        self._slice_axis_combo = QtWidgets.QComboBox()
-        self._slice_axis_combo.addItems(["X", "Y", "Z"])
-        self._slice_axis_combo.setCurrentIndex(2)
-        self._slice_axis_combo.setEnabled(False)
-        self._slice_axis_combo.currentIndexChanged.connect(self._on_slice_axis_changed)
-        slice_toolbar.addWidget(self._slice_axis_combo)
-
-        slice_toolbar.addSpacing(16)
-        slice_toolbar.addWidget(QtWidgets.QLabel("Position"))
-        self._slice_position_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-        self._slice_position_slider.setRange(0, 1000)
-        self._slice_position_slider.setValue(500)
-        self._slice_position_slider.setEnabled(False)
-        self._slice_position_slider.valueChanged.connect(self._on_slice_position_changed)
-        slice_toolbar.addWidget(self._slice_position_slider, 1)
-
-        self._slice_position_label = QtWidgets.QLabel("-")
-        self._slice_position_label.setMinimumWidth(90)
-        slice_toolbar.addWidget(self._slice_position_label)
+        self._slice = SliceController(self._viewer, self)
 
         right_layout.addLayout(toolbar)
-        right_layout.addLayout(slice_toolbar)
+        right_layout.addLayout(self._slice.build_toolbar())
         right_layout.addWidget(self._viewer)
-        viewer_container = right
 
         # Splitter layout
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal, central)
         controls.setMinimumWidth(360)
         splitter.addWidget(controls)
-        splitter.addWidget(viewer_container)
+        splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
 
         layout.addWidget(splitter)
@@ -264,8 +233,7 @@ class MainWindow(QtWidgets.QMainWindow):
         template_script = os.path.abspath(os.path.join(default_root, "examples", "template_3d_problem.py"))
         if os.path.exists(template_script):
             self._script_path_input.setText(template_script)
-        else:
-            self._on_script_path_changed(self._script_path_input.text())
+        self._on_script_path_changed()
 
     # ------------------------- Process handling -------------------------
     def _run_simulation(self) -> None:
@@ -288,71 +256,43 @@ class MainWindow(QtWidgets.QMainWindow):
         gui_xml_path: Optional[str] = None
         if self._should_use_gui_parameters():
             try:
-                gui_xml_path = self._write_gui_parameters_xml(script_path, mpi_processes)
-            except Exception as exc:
+                gui_xml_path = self._write_gui_parameters_xml(script_path)
+            except OSError as exc:
                 QtWidgets.QMessageBox.critical(self, "Failed to write GUI parameters", str(exc))
                 return
             extra_script_args.append(f"--input-xml={gui_xml_path}")
-            dialog_ranks = self._gui_parameters.get("num_procs") if self._gui_parameters else None
-            if dialog_ranks is not None and int(dialog_ranks) != mpi_processes:
-                self._append_log(f"[{self._now()}] MPI ranks {mpi_processes} from the main window replaced the dialog value {dialog_ranks}; the decomposition may be refactorized.")
             self._append_log(f"[{self._now()}] GUI parameters saved to {gui_xml_path}")
-        elif self._gui_parameters and not self._script_allows_gui_parameters:
+        elif self._gui_case and not self._script_allows_gui_parameters:
             self._append_log("GUI parameters ignored: the script accepts no --input-xml argument.")
 
         self._log_output.clear()
-        # Run the chosen script directly; scripts include a small import bootstrap for relative imports
-        extra_str = " ".join(extra_script_args)
-        display_tail = f"{os.path.basename(script_path)} {extra_str}".strip()
-        interpreter_arguments = [sys.executable, "--run-script"] if getattr(sys, "frozen", False) else [sys.executable]
-        display_command = f"mpirun -np {mpi_processes} {' '.join(interpreter_arguments)} {display_tail}"
-        launch_arguments = ["-np", str(mpi_processes), *interpreter_arguments, script_path]
-        launch_arguments.extend(extra_script_args)
+        self._run_button.setEnabled(False)
+        display_command = self._runner.start(
+            script_path,
+            working_directory,
+            mpi_processes,
+            extra_script_args,
+            self._output_directory_input.text().strip() or resolve_output_root(),
+        )
         self._append_log(f"[{self._now()}] Starting: {display_command}")
 
-        self._run_button.setEnabled(False)
-
-        # Start process (non-interactive)
-        program = "mpirun"
-        args = launch_arguments
-        self._simulation_process.setWorkingDirectory(working_directory)
-        # Ensure child Python can import the top-level package
-        environment = QtCore.QProcessEnvironment.systemEnvironment()
-        # Prepend the src/ root to PYTHONPATH
-        package_source_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-        existing_path = environment.value("PYTHONPATH", "")
-        separator = ":" if existing_path else ""
-        environment.insert("PYTHONPATH", f"{package_source_root}{separator}{existing_path}")
-        environment.insert("EXAFLOW_OUTPUT_ROOT", self._output_directory_input.text().strip() or resolve_output_root())
-        self._simulation_process.setProcessEnvironment(environment)
-        self._simulation_process.start(program, args)
-
-        if not self._simulation_process.waitForStarted(3000):
-            self._run_button.setEnabled(True)
-            QtWidgets.QMessageBox.critical(self, "Failed to start", self._simulation_process.errorString())
-
     def _stop_simulation(self) -> None:
-        if self._simulation_process.state() == QtCore.QProcess.ProcessState.NotRunning:
+        if not self._runner.is_running():
             return
         self._append_log(f"[{self._now()}] Stopping…")
-        self._simulation_process.kill()
+        self._runner.stop()
         self._append_log(f"[{self._now()}] Process stopped.")
 
-    def _on_process_output(self) -> None:
-        data = bytes(self._simulation_process.readAllStandardOutput()).decode(errors="ignore")
-        if data:
-            self._append_log(data.rstrip("\n"))
-
-    def _on_process_finished(self, code: int, status: QtCore.QProcess.ExitStatus) -> None:
+    def _on_process_finished(self, code: int, status: str) -> None:
         self._run_button.setEnabled(True)
-        self._append_log(f"[{self._now()}] Finished with code {code} ({str(status)})")
+        self._append_log(f"[{self._now()}] Finished with code {code} ({status})")
+
+    def _on_process_failed(self, message: str) -> None:
+        self._run_button.setEnabled(True)
+        QtWidgets.QMessageBox.critical(self, "Failed to start", message)
 
     # ------------------------- File operations -------------------------
     def _open_file(self) -> None:
-        if self._viewer is None:
-            QtWidgets.QMessageBox.information(self, "Viewer unavailable", "Install 'pyvista' and 'pyvistaqt' to enable visualization.")
-            return
-
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             "Open result file",
@@ -363,109 +303,40 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self._load_file_path(file_path)
 
-    def _maybe_autoload_latest(self) -> None:
-        if self._streaming_active:
-            return
-        if not self._session_settings.autoload_enabled or self._viewer is None:
-            return
-        output_directory = self._output_directory_input.text().strip()
-        if not output_directory or not os.path.isdir(output_directory):
-            return
-
-        latest_file = self._find_latest_file(output_directory)
-        if latest_file and latest_file != self._last_loaded_path:
-            self._load_file_path(latest_file)
-
-    def _find_latest_file(self, directory: str) -> str | None:
-        vtr_files = glob.glob(os.path.join(directory, "**", "*.vtr"), recursive=True)
-        csv_files = glob.glob(os.path.join(directory, "**", "*_Total.csv"), recursive=True)
-        candidate_files = vtr_files + csv_files
-        if not candidate_files:
-            return None
-        
-        # Sort by modification time, but prefer .vtr files over .csv files when timestamps are close (within 1 second)
-        def sort_key(file_path: str) -> tuple[float, int]:
-            mtime = os.path.getmtime(file_path)
-            # Prefer .vtr files (priority 0) over .csv files (priority 1)
-            priority = 0 if file_path.lower().endswith('.vtr') else 1
-            return (-mtime, priority)  # Negative mtime for descending order
-        
-        candidate_files.sort(key=sort_key)
-        return candidate_files[0]
+    def _refresh_watcher(self) -> None:
+        self._watcher.set_directory(self._output_directory_input.text().strip())
+        self._watcher.set_interval(self._session_settings.autoload_interval_ms)
+        self._watcher.set_enabled(self._session_settings.autoload_enabled)
+        if self._session_settings.autoload_enabled:
+            self._watcher.poll()
 
     def _load_file_path(self, file_path: str) -> None:
         try:
             if file_path.lower().endswith(".vtr"):
-                self._viewer.load_vtr(file_path)  # type: ignore
+                self._viewer.load_vtr(file_path)
                 self._append_log(f"[{self._now()}] Loaded VTR: {file_path}")
             elif file_path.lower().endswith("_total.csv"):
-                self._viewer.load_csv(file_path)  # type: ignore
+                self._viewer.load_csv(file_path)
                 self._append_log(f"[{self._now()}] Loaded CSV: {file_path}")
             else:
                 QtWidgets.QMessageBox.warning(self, "Unsupported file", os.path.basename(file_path))
                 return
-            self._last_loaded_path = file_path
-            self._refresh_slice_controls()
+            self._watcher.note_loaded(file_path)
+            self._slice.refresh()
         except Exception:
-            self._last_loaded_path = file_path
+            self._watcher.note_loaded(file_path)
             self._append_log(traceback.format_exc())
             QtWidgets.QMessageBox.critical(self, "Failed to load", os.path.basename(file_path))
 
     # ------------------------- Network operations -------------------------
     def _on_streaming_dataset(self, dataset: pv.DataSet) -> None:
-        self._streaming_active = True
-        if self._viewer is None:
-            self._append_log("Streaming data received but viewer unavailable.")
-            return
+        # A live stream replaces the newest file on disk, so the watcher stops competing with it.
+        self._watcher.set_enabled(False)
         try:
             self._viewer.load_mesh(dataset)
-            self._refresh_slice_controls()
+            self._slice.refresh()
         except Exception:
             self._append_log(traceback.format_exc())
-
-    # ------------------------- Cross-section -------------------------
-    def _apply_slice_position(self) -> None:
-        extent = self._viewer.read_slice_extent(self._slice_axis_combo.currentIndex())
-        if extent is None:
-            self._slice_position_label.setText("-")
-            return
-        low, high, unit = extent
-        position = low + (high - low) * self._slice_position_slider.value() / 1000.0
-        self._slice_position_label.setText(f"{position:.3g} {unit}")
-        self._viewer.set_slice_position(position)
-
-    def _refresh_slice_controls(self) -> None:
-        """
-        Match the slice controls to the dataset that is now loaded. A 1D or 2D result is already one plane, so the controls go insensitive and the viewer shows it flat by itself.
-        """
-
-        can_slice = bool(self._viewer.can_slice())
-        self._slice_checkbox.setEnabled(can_slice)
-        self._slice_axis_combo.setEnabled(can_slice and self._slice_checkbox.isChecked())
-        self._slice_position_slider.setEnabled(can_slice and self._slice_checkbox.isChecked())
-        if not can_slice:
-            self._slice_checkbox.setToolTip("This result has fewer than three axes, so it is already a cross-section.")
-            self._slice_position_label.setText("-")
-            return
-        self._slice_checkbox.setToolTip("Cut the result on one axis and face the camera at that plane.")
-        self._apply_slice_position()
-
-    def _on_slice_toggled(self, checked: bool) -> None:
-        self._slice_axis_combo.setEnabled(checked)
-        self._slice_position_slider.setEnabled(checked)
-        if checked:
-            self._apply_slice_position()
-        self._viewer.set_show_slice(bool(checked))
-
-    def _on_slice_axis_changed(self, index: int) -> None:
-        self._slice_position_slider.blockSignals(True)
-        self._slice_position_slider.setValue(500)
-        self._slice_position_slider.blockSignals(False)
-        self._viewer.set_slice_axis(int(index))
-        self._apply_slice_position()
-
-    def _on_slice_position_changed(self, _: int) -> None:
-        self._apply_slice_position()
 
     # ------------------------- Helpers -------------------------
     def _browse_script(self) -> None:
@@ -473,29 +344,24 @@ class MainWindow(QtWidgets.QMainWindow):
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose Python script", default_path, "Python (*.py)")
         if file_path:
             self._script_path_input.setText(file_path)
+            self._on_script_path_changed()
 
     def _open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self, self._session_settings)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._session_settings = dialog.settings()
-            self._autoload_timer.setInterval(self._session_settings.autoload_interval_ms)
-            if self._session_settings.autoload_enabled:
-                if not self._autoload_timer.isActive():
-                    self._autoload_timer.start()
-                self._maybe_autoload_latest()
-            else:
-                self._autoload_timer.stop()
+            self._refresh_watcher()
 
     def _open_simulation_params_dialog(self) -> None:
-        dialog = SimulationParametersDialog(self, self._gui_parameters)
+        dialog = SimulationParametersDialog(self, self._gui_case)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            self._gui_parameters = dialog.values()
+            self._gui_case = dialog.case()
             self._update_params_status()
 
-    def _on_script_path_changed(self, _: str) -> None:
+    def _on_script_path_changed(self) -> None:
         self._script_allows_gui_parameters = self._script_supports_gui_parameters(self._script_path_input.text().strip())
         if not self._script_allows_gui_parameters:
-            self._gui_parameters = None
+            self._gui_case = None
         self._update_params_status()
 
     def _script_supports_gui_parameters(self, script_path: str) -> bool:
@@ -509,7 +375,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return False
         try:
             text = Path(script_path).read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             return False
         return "--input-xml" in text or "--case" in text
 
@@ -519,21 +385,24 @@ class MainWindow(QtWidgets.QMainWindow):
             self._params_status.setText("Disabled: script takes no --input-xml")
             return
         self._params_button.setEnabled(True)
-        if self._gui_parameters is None:
+        if self._gui_case is None:
             self._params_status.setText("Not configured")
         else:
             self._params_status.setText("Configured")
 
     def _should_use_gui_parameters(self) -> bool:
-        return bool(self._script_allows_gui_parameters and self._gui_parameters)
+        return bool(self._script_allows_gui_parameters and self._gui_case)
 
-    def _write_gui_parameters_xml(self, script_path: str, mpi_processes: int) -> str:
-        if self._gui_parameters is None:
+    def _write_gui_parameters_xml(self, script_path: str) -> str:
+        """
+        Write the dialog's case beside the script as `<stem>_input_parameters.xml` and return that path. The rank count is not written; the arrangement follows the communicator the run is launched with.
+        """
+
+        if self._gui_case is None:
             raise RuntimeError("GUI parameters not configured")
         script_file = Path(script_path).resolve()
         xml_path = script_file.with_name(f"{script_file.stem}_input_parameters.xml")
-        xml_payload = simulation_values_to_xml({**self._gui_parameters, "num_procs": mpi_processes})
-        xml_path.write_text(xml_payload, encoding="utf-8")
+        xml_path.write_text(write_case(self._gui_case), encoding="utf-8")
         return str(xml_path)
 
     def _browse_working_directory(self) -> None:
@@ -545,6 +414,7 @@ class MainWindow(QtWidgets.QMainWindow):
         directory_path = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose output directory", self._output_directory_input.text().strip() or os.getcwd())
         if directory_path:
             self._output_directory_input.setText(directory_path)
+            self._refresh_watcher()
 
     def _show_help(self) -> None:
         """Show the help dialog."""
@@ -558,29 +428,3 @@ class MainWindow(QtWidgets.QMainWindow):
     @staticmethod
     def _now() -> str:
         return datetime.now().strftime("%H:%M:%S")
-
-    @staticmethod
-    def _path_to_module(script_path: str, work_dir: str) -> str | None:
-        """
-        Convert a script path under work_dir to a dotted module path. Returns None if the path is not a .py file under work_dir.
-        """
-        try:
-            abs_script = os.path.abspath(script_path)
-            abs_root = os.path.abspath(work_dir)
-            if not abs_script.endswith(".py"):
-                return None
-            # Ensure script is inside the working directory
-            try:
-                rel = os.path.relpath(abs_script, abs_root)
-            except Exception:
-                return None
-            if rel.startswith(os.pardir):
-                return None
-            # Build dotted module path
-            module = rel[:-3].replace(os.sep, ".")
-            if module.endswith(".__init__"):
-                module = module[: -len(".__init__")]
-            return module or None
-        except Exception:
-            return None
-

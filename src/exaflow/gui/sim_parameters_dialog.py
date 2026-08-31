@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Dict, List
 import xml.etree.ElementTree as ET
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtWidgets
 
-from ..boundary_conditions import BoundaryCondition, parse_boundary_condition
 from ..config import (
     Boundaries,
+    BoundaryCondition,
     Case,
     Face,
     FaceCondition,
@@ -17,8 +17,9 @@ from ..config import (
     OutputControl,
     SolverOptions,
     TimeControl,
+    parse_boundary_condition,
 )
-from ..config.case_xml import parse_initial_conditions, write_case
+from ..config.case_xml import parse_initial_conditions, write_initial_conditions
 
 
 DEFAULT_INITIAL_CONDITIONS_XML = """<InitialConditions>
@@ -71,48 +72,22 @@ DEFAULT_INITIAL_CONDITIONS_XML = """<InitialConditions>
 """
 
 
-def _default_values() -> Dict[str, Any]:
-    return {
-        "rho": 1.225,
-        "nu": 1.81e-5,
-        "domain": [100, 100, 50],
-        "size": [6.28, 3.14, 2.0],
-        "nt": 1000,
-        "num_ghost_layers": 1,
-        "cfl": 0.5,
-        "num_procs": 4,
-        "num_procs_x": -1,
-        "num_procs_y": -1,
-        "num_procs_z": -1,
-        "left_wall": BoundaryCondition.INFLOW.value,
-        "left_inflow": {"u": 2.0, "v": 1.0, "w": 1.0},
-        "left_outflow": {"p": 0.0},
-        "right_wall": BoundaryCondition.OUTFLOW.value,
-        "right_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "right_outflow": {"p": 0.0},
-        "top_wall": BoundaryCondition.NO_SLIP.value,
-        "top_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "top_outflow": {"p": 0.0},
-        "bottom_wall": BoundaryCondition.NO_SLIP.value,
-        "bottom_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "bottom_outflow": {"p": 0.0},
-        "front_wall": BoundaryCondition.NO_SLIP.value,
-        "front_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "front_outflow": {"p": 0.0},
-        "back_wall": BoundaryCondition.NO_SLIP.value,
-        "back_inflow": {"u": -1.0, "v": -1.0, "w": -1.0},
-        "back_outflow": {"p": 0.0},
-        "include_convection": True,
-        "include_diffusion": True,
-        "include_pressure": False,
-        "convection_scheme": "Upwind",
-        "viscous_scheme": "CentralDifference",
-        "time_integration_order": 1,
-        "vtk_frequency": 100,
-        "total_csv_frequency": 100,
-        "partial_csv_frequency": 250,
-        "initial_conditions_xml": DEFAULT_INITIAL_CONDITIONS_XML.strip(),
-    }
+def build_default_case() -> Case:
+    """
+    The case a dialog opens on when the window has none yet. Every field the frozen types already default is left to them, so this states only what a new user has to be shown a value for.
+    """
+
+    return Case(
+        fluid=Fluid(rho=1.225, nu=1.81e-5),
+        grid=Grid(shape=(100, 100, 50), extent=(6.28, 3.14, 2.0), num_ghost_layers=1),
+        time=TimeControl(num_steps=1000, cfl=0.5, integration_order=1),
+        boundaries=Boundaries(
+            left=FaceCondition(BoundaryCondition.INFLOW, (2.0, 1.0, 1.0)),
+            right=FaceCondition(BoundaryCondition.OUTFLOW, pressure=0.0),
+        ),
+        initial=parse_initial_conditions(ET.fromstring(DEFAULT_INITIAL_CONDITIONS_XML), 3),
+        outputs=OutputControl(total_csv_frequency=100, partial_csv_frequency=250, vtk_frequency=100),
+    )
 
 
 @dataclass
@@ -123,21 +98,20 @@ class BoundaryWidgets:
 
 
 class SimulationParametersDialog(QtWidgets.QDialog):
-    """Dialog that exposes every field needed to build SimulationParameters."""
+    """
+    Dialog that edits one Case. It opens on the case it is given, and `case()` returns what the form now describes. The form cannot be accepted into a Case the solver would reject, because accepting builds that Case and reports whatever it raises.
 
-    def __init__(self, parent: QtWidgets.QWidget | None = None, initial_values: Dict[str, Any] | None = None) -> None:
+    The dialog describes a 3D case only. It sets no rank count: the arrangement follows the communicator the run is launched with, which the main window sets.
+    """
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None, initial_case: Case | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Simulation Parameters")
         self.setModal(True)
         self.resize(640, 720)
 
-        self._values: Dict[str, Any] = _default_values()
-        if initial_values:
-            self._values.update(initial_values)
-
         self._double_fields: Dict[str, QtWidgets.QDoubleSpinBox] = {}
         self._int_fields: Dict[str, QtWidgets.QSpinBox] = {}
-        self._text_fields: Dict[str, QtWidgets.QLineEdit] = {}
         self._bool_fields: Dict[str, QtWidgets.QCheckBox] = {}
         self._combo_fields: Dict[str, QtWidgets.QComboBox] = {}
         self._boundary_fields: Dict[str, BoundaryWidgets] = {}
@@ -145,7 +119,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._initial_conditions_editor = QtWidgets.QPlainTextEdit()
 
         self._build_ui()
-        self._populate_from_values()
+        self._populate_from_case(initial_case or build_default_case())
 
     # ------------------------ UI construction ------------------------ #
     def _build_ui(self) -> None:
@@ -155,7 +129,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         layout.addWidget(tabs, 1)
 
         tabs.addTab(self._build_fluid_tab(), "Fluid & Grid")
-        tabs.addTab(self._build_parallel_solver_tab(), "Parallel & Solver")
+        tabs.addTab(self._build_solver_tab(), "Solver")
         tabs.addTab(self._build_boundaries_tab(), "Boundaries")
         tabs.addTab(self._build_output_tab(), "Output & Misc")
         tabs.addTab(self._build_initial_conditions_tab(), "Initial Conditions")
@@ -174,12 +148,12 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._double_fields["rho"] = self._create_double_input(minimum=1e-9, maximum=1e6, decimals=6)
         form.addRow("Density (rho)", self._double_fields["rho"])
 
-        self._double_fields["nu"] = self._create_double_input(minimum=1e-9, maximum=1.0, decimals=8, single_step=1e-6)
+        self._double_fields["nu"] = self._create_double_input(minimum=0.0, maximum=1.0, decimals=8, single_step=1e-6)
         form.addRow("Kinematic viscosity (nu)", self._double_fields["nu"])
 
-        self._int_fields["domain_nx"] = self._create_int_input(1, 10000)
-        self._int_fields["domain_ny"] = self._create_int_input(1, 10000)
-        self._int_fields["domain_nz"] = self._create_int_input(1, 10000)
+        self._int_fields["domain_nx"] = self._create_int_input(2, 10000)
+        self._int_fields["domain_ny"] = self._create_int_input(2, 10000)
+        self._int_fields["domain_nz"] = self._create_int_input(2, 10000)
         form.addRow("Domain (nx, ny, nz)", self._merge_triplet(self._int_fields["domain_nx"], self._int_fields["domain_ny"], self._int_fields["domain_nz"]))
 
         self._double_fields["size_length"] = self._create_double_input(1e-6, 1e6, 3, 0.1)
@@ -190,7 +164,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._int_fields["nt"] = self._create_int_input(1, 10_000_000)
         form.addRow("Time steps (nt)", self._int_fields["nt"])
 
-        self._int_fields["num_ghost_layers"] = self._create_int_input(0, 10)
+        self._int_fields["num_ghost_layers"] = self._create_int_input(1, 10)
         form.addRow("Ghost layers", self._int_fields["num_ghost_layers"])
 
         self._double_fields["cfl"] = self._create_double_input(1e-6, 10.0, 4, 0.05)
@@ -198,17 +172,9 @@ class SimulationParametersDialog(QtWidgets.QDialog):
 
         return widget
 
-    def _build_parallel_solver_tab(self) -> QtWidgets.QWidget:
+    def _build_solver_tab(self) -> QtWidgets.QWidget:
         widget = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(widget)
-
-        self._int_fields["num_procs"] = self._create_int_input(1, 4096)
-        form.addRow("MPI ranks", self._int_fields["num_procs"])
-
-        self._int_fields["num_procs_x"] = self._create_int_input(-1, 4096)
-        self._int_fields["num_procs_y"] = self._create_int_input(-1, 4096)
-        self._int_fields["num_procs_z"] = self._create_int_input(-1, 4096)
-        form.addRow("Decomposition (x, y, z)", self._merge_triplet(self._int_fields["num_procs_x"], self._int_fields["num_procs_y"], self._int_fields["num_procs_z"]))
 
         self._bool_fields["include_convection"] = QtWidgets.QCheckBox("Include convection")
         form.addRow(self._bool_fields["include_convection"])
@@ -223,7 +189,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._bool_fields["include_pressure"] = QtWidgets.QCheckBox("Include pressure")
         form.addRow(self._bool_fields["include_pressure"])
 
-        self._int_fields["time_integration_order"] = self._create_int_input(1, 10)
+        self._int_fields["time_integration_order"] = self._create_int_input(1, 3)
         form.addRow("Time integration order", self._int_fields["time_integration_order"])
 
         return widget
@@ -347,197 +313,102 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         combo.addItems(options)
         return combo
 
-    def _populate_from_values(self) -> None:
-        v = self._values
-        self._double_fields["rho"].setValue(float(v["rho"]))
-        self._double_fields["nu"].setValue(float(v["nu"]))
+    def _populate_from_case(self, case: Case) -> None:
+        self._double_fields["rho"].setValue(case.fluid.rho)
+        self._double_fields["nu"].setValue(case.fluid.nu)
 
-        nx, ny, nz = v["domain"]
-        self._int_fields["domain_nx"].setValue(int(nx))
-        self._int_fields["domain_ny"].setValue(int(ny))
-        self._int_fields["domain_nz"].setValue(int(nz))
+        for index, axis in enumerate(("nx", "ny", "nz")):
+            self._int_fields[f"domain_{axis}"].setValue(case.grid.shape[index])
+        for index, name in enumerate(("size_length", "size_width", "size_height")):
+            self._double_fields[name].setValue(case.grid.extent[index])
 
-        length, width, height = v["size"]
-        self._double_fields["size_length"].setValue(float(length))
-        self._double_fields["size_width"].setValue(float(width))
-        self._double_fields["size_height"].setValue(float(height))
+        self._int_fields["nt"].setValue(case.time.num_steps)
+        self._int_fields["num_ghost_layers"].setValue(case.grid.num_ghost_layers)
+        self._double_fields["cfl"].setValue(case.time.cfl)
 
-        self._int_fields["nt"].setValue(int(v["nt"]))
-        self._int_fields["num_ghost_layers"].setValue(int(v["num_ghost_layers"]))
-        self._double_fields["cfl"].setValue(float(v["cfl"]))
+        self._bool_fields["include_convection"].setChecked(case.solver.include_convection)
+        self._combo_fields["convection_scheme"].setCurrentText(case.solver.convection_scheme)
+        self._bool_fields["include_diffusion"].setChecked(case.solver.include_diffusion)
+        self._combo_fields["viscous_scheme"].setCurrentText(case.solver.viscous_scheme)
+        self._bool_fields["include_pressure"].setChecked(case.solver.include_pressure)
+        self._int_fields["time_integration_order"].setValue(case.time.integration_order)
 
-        self._int_fields["num_procs"].setValue(int(v["num_procs"]))
-        self._int_fields["num_procs_x"].setValue(int(v["num_procs_x"]))
-        self._int_fields["num_procs_y"].setValue(int(v["num_procs_y"]))
-        self._int_fields["num_procs_z"].setValue(int(v["num_procs_z"]))
+        self._int_fields["vtk_frequency"].setValue(case.outputs.vtk_frequency)
+        self._int_fields["total_csv_frequency"].setValue(case.outputs.total_csv_frequency)
+        self._int_fields["partial_csv_frequency"].setValue(case.outputs.partial_csv_frequency)
 
-        self._bool_fields["include_convection"].setChecked(bool(v["include_convection"]))
-        self._combo_fields["convection_scheme"].setCurrentText(str(v["convection_scheme"]))
+        for face in Face:
+            condition = case.boundaries.find_face(face)
+            widgets = self._boundary_fields[face.name.lower()]
+            widgets.wall.setText(condition.kind.value)
+            for index, name in enumerate(("u", "v", "w")):
+                widgets.inflow[name].setValue(condition.velocity[index] if index < len(condition.velocity) else 0.0)
+            widgets.outflow["p"].setValue(condition.pressure)
 
-        self._bool_fields["include_diffusion"].setChecked(bool(v["include_diffusion"]))
-        self._combo_fields["viscous_scheme"].setCurrentText(str(v["viscous_scheme"]))
-
-        self._bool_fields["include_pressure"].setChecked(bool(v["include_pressure"]))
-        self._int_fields["time_integration_order"].setValue(int(v["time_integration_order"]))
-
-        self._int_fields["vtk_frequency"].setValue(int(v["vtk_frequency"]))
-        self._int_fields["total_csv_frequency"].setValue(int(v["total_csv_frequency"]))
-        self._int_fields["partial_csv_frequency"].setValue(int(v["partial_csv_frequency"]))
-
-        for key, widgets in self._boundary_fields.items():
-            wall_key = f"{key}_wall"
-            inflow_key = f"{key}_inflow"
-            outflow_key = f"{key}_outflow"
-            widgets.wall.setText(str(v[wall_key]))
-            inflow = v[inflow_key]
-            outflow = v[outflow_key]
-            widgets.inflow["u"].setValue(float(inflow.get("u", 0.0)))
-            widgets.inflow["v"].setValue(float(inflow.get("v", 0.0)))
-            widgets.inflow["w"].setValue(float(inflow.get("w", 0.0)))
-            widgets.outflow["p"].setValue(float(outflow.get("p", 0.0)))
-
-        initial_text = v.get("initial_conditions_xml", DEFAULT_INITIAL_CONDITIONS_XML).strip()
-        self._initial_conditions_editor.setPlainText(initial_text)
+        self._initial_conditions_editor.setPlainText(write_initial_conditions(case.initial, case.dimension))
 
     # ------------------------ Data extraction ------------------------ #
-    def values(self) -> Dict[str, Any]:
-        domain = [
-            int(self._int_fields["domain_nx"].value()),
-            int(self._int_fields["domain_ny"].value()),
-            int(self._int_fields["domain_nz"].value()),
-        ]
-        size = [
-            float(self._double_fields["size_length"].value()),
-            float(self._double_fields["size_width"].value()),
-            float(self._double_fields["size_height"].value()),
-        ]
+    def case(self) -> Case:
+        """
+        The case the form now describes. Raises ValueError or NotImplementedError when the form describes a case the solver rejects, so the caller reports the fault here instead of writing an XML file that fails at run time.
+        """
 
-        data: Dict[str, Any] = {
-            "rho": float(self._double_fields["rho"].value()),
-            "nu": float(self._double_fields["nu"].value()),
-            "domain": domain,
-            "size": size,
-            "nt": int(self._int_fields["nt"].value()),
-            "num_ghost_layers": int(self._int_fields["num_ghost_layers"].value()),
-            "cfl": float(self._double_fields["cfl"].value()),
-            "num_procs": int(self._int_fields["num_procs"].value()),
-            "num_procs_x": int(self._int_fields["num_procs_x"].value()),
-            "num_procs_y": int(self._int_fields["num_procs_y"].value()),
-            "num_procs_z": int(self._int_fields["num_procs_z"].value()),
-            "include_convection": bool(self._bool_fields["include_convection"].isChecked()),
-            "include_diffusion": bool(self._bool_fields["include_diffusion"].isChecked()),
-            "include_pressure": bool(self._bool_fields["include_pressure"].isChecked()),
-            "convection_scheme": self._combo_fields["convection_scheme"].currentText().strip(),
-            "viscous_scheme": self._combo_fields["viscous_scheme"].currentText().strip(),
-            "time_integration_order": int(self._int_fields["time_integration_order"].value()),
-            "vtk_frequency": int(self._int_fields["vtk_frequency"].value()),
-            "total_csv_frequency": int(self._int_fields["total_csv_frequency"].value()),
-            "partial_csv_frequency": int(self._int_fields["partial_csv_frequency"].value()),
-            "initial_conditions_xml": self._initial_conditions_editor.toPlainText().strip() or DEFAULT_INITIAL_CONDITIONS_XML.strip(),
-        }
+        faces = {}
+        for face in Face:
+            widgets = self._boundary_fields[face.name.lower()]
+            kind = parse_boundary_condition(widgets.wall.text().strip() or BoundaryCondition.NO_SLIP.value)
+            velocity: tuple[float, ...] = ()
+            if kind == BoundaryCondition.INFLOW:
+                velocity = tuple(widgets.inflow[name].value() for name in ("u", "v", "w"))
+            pressure = widgets.outflow["p"].value() if kind == BoundaryCondition.OUTFLOW else 0.0
+            faces[face.name.lower()] = FaceCondition(kind=kind, velocity=velocity, pressure=pressure)
 
-        for key, widgets in self._boundary_fields.items():
-            data[f"{key}_wall"] = widgets.wall.text().strip() or BoundaryCondition.NO_SLIP.value
-            data[f"{key}_inflow"] = {
-                "u": float(widgets.inflow["u"].value()),
-                "v": float(widgets.inflow["v"].value()),
-                "w": float(widgets.inflow["w"].value()),
-            }
-            data[f"{key}_outflow"] = {
-                "p": float(widgets.outflow["p"].value()),
-            }
+        initial_text = self._initial_conditions_editor.toPlainText().strip() or DEFAULT_INITIAL_CONDITIONS_XML
+        try:
+            initial_element = ET.fromstring(initial_text)
+        except ET.ParseError as error:
+            raise ValueError(f"The initial conditions block is not valid XML: {error}") from error
 
-        return data
+        return Case(
+            fluid=Fluid(
+                rho=self._double_fields["rho"].value(),
+                nu=self._double_fields["nu"].value(),
+            ),
+            grid=Grid(
+                shape=tuple(self._int_fields[f"domain_{axis}"].value() for axis in ("nx", "ny", "nz")),
+                extent=tuple(self._double_fields[name].value() for name in ("size_length", "size_width", "size_height")),
+                num_ghost_layers=self._int_fields["num_ghost_layers"].value(),
+            ),
+            time=TimeControl(
+                num_steps=self._int_fields["nt"].value(),
+                cfl=self._double_fields["cfl"].value(),
+                integration_order=self._int_fields["time_integration_order"].value(),
+            ),
+            boundaries=Boundaries(**faces),
+            initial=parse_initial_conditions(initial_element, 3),
+            solver=SolverOptions(
+                include_convection=self._bool_fields["include_convection"].isChecked(),
+                include_diffusion=self._bool_fields["include_diffusion"].isChecked(),
+                include_pressure=self._bool_fields["include_pressure"].isChecked(),
+                convection_scheme=self._combo_fields["convection_scheme"].currentText().strip(),
+                viscous_scheme=self._combo_fields["viscous_scheme"].currentText().strip(),
+            ),
+            outputs=OutputControl(
+                total_csv_frequency=self._int_fields["total_csv_frequency"].value(),
+                partial_csv_frequency=self._int_fields["partial_csv_frequency"].value(),
+                vtk_frequency=self._int_fields["vtk_frequency"].value(),
+            ),
+        )
 
     # ------------------------ Validation ------------------------ #
     def _on_accept(self) -> None:
-        domain = [self._int_fields["domain_nx"].value(), self._int_fields["domain_ny"].value(), self._int_fields["domain_nz"].value()]
-        if not all(n > 0 for n in domain):
-            QtWidgets.QMessageBox.warning(self, "Invalid domain", "All domain sizes must be positive integers.")
-            return
-        size = [self._double_fields["size_length"].value(), self._double_fields["size_width"].value(), self._double_fields["size_height"].value()]
-        if not all(s > 0 for s in size):
-            QtWidgets.QMessageBox.warning(self, "Invalid size", "All physical dimensions must be positive.")
-            return
-        for key, widgets in self._boundary_fields.items():
-            wall_text = widgets.wall.text().strip() or BoundaryCondition.NO_SLIP.value
-            try:
-                parse_boundary_condition(wall_text)
-            except ValueError as exc:
-                QtWidgets.QMessageBox.warning(self, "Invalid boundary condition", f"{key} wall: {exc}")
-                return
+        """
+        Accept only a form that builds a Case. Every rule lives in the frozen types, so the dialog states none of them a second time and cannot disagree with the solver about what is valid.
+        """
 
-        xml_text = self._initial_conditions_editor.toPlainText().strip()
-        if xml_text and not xml_text.startswith("<InitialConditions"):
-            QtWidgets.QMessageBox.warning(self, "Invalid initial conditions", "The block must start with <InitialConditions>.")
+        try:
+            self.case()
+        except (ValueError, NotImplementedError) as error:
+            QtWidgets.QMessageBox.warning(self, "Invalid parameters", str(error))
             return
         self.accept()
-
-
-def build_case_from_values(values: Dict[str, Any]) -> Case:
-    """
-    Build a Case from the dialog's value dictionary. Raises ValueError or NotImplementedError when the form describes a case the solver rejects, so the dialog reports the fault instead of writing an XML file that fails later at run time.
-
-    The rank counts in the dialog are ignored here. The rank arrangement follows the communicator the run is launched with.
-    """
-
-    counts = [int(n) for n in values["domain"]]
-    spans = [float(v) for v in values["size"]]
-    dimension = sum(1 for n in counts if n > 0)
-    if dimension == 0:
-        raise ValueError("The domain needs a positive nx.")
-
-    faces = {}
-    for face in Face:
-        key = face.name.lower()
-        kind = parse_boundary_condition(str(values[f"{key}_wall"]))
-        velocity: tuple[float, ...] = ()
-        pressure = 0.0
-        if kind == BoundaryCondition.INFLOW:
-            inflow = values[f"{key}_inflow"]
-            velocity = tuple(float(inflow[name]) for name in ("u", "v", "w")[:dimension])
-        if kind == BoundaryCondition.OUTFLOW:
-            pressure = float(values[f"{key}_outflow"]["p"])
-        faces[key] = FaceCondition(kind=kind, velocity=velocity, pressure=pressure)
-
-    initial_xml = values.get("initial_conditions_xml") or DEFAULT_INITIAL_CONDITIONS_XML
-    try:
-        initial_element = ET.fromstring(initial_xml)
-    except ET.ParseError:
-        initial_element = ET.fromstring(DEFAULT_INITIAL_CONDITIONS_XML)
-
-    return Case(
-        fluid=Fluid(rho=float(values["rho"]), nu=float(values["nu"])),
-        grid=Grid(
-            shape=tuple(counts[:dimension]),
-            extent=tuple(spans[:dimension]),
-            num_ghost_layers=int(values["num_ghost_layers"]),
-        ),
-        time=TimeControl(
-            num_steps=int(values["nt"]),
-            cfl=float(values["cfl"]),
-            integration_order=int(values["time_integration_order"]),
-        ),
-        boundaries=Boundaries(**faces),
-        initial=parse_initial_conditions(initial_element, dimension),
-        solver=SolverOptions(
-            include_convection=bool(values["include_convection"]),
-            include_diffusion=bool(values["include_diffusion"]),
-            include_pressure=bool(values["include_pressure"]),
-            convection_scheme=str(values["convection_scheme"]),
-            viscous_scheme=str(values["viscous_scheme"]),
-        ),
-        outputs=OutputControl(
-            total_csv_frequency=int(values["total_csv_frequency"]),
-            partial_csv_frequency=int(values["partial_csv_frequency"]),
-            vtk_frequency=int(values["vtk_frequency"]),
-        ),
-    )
-
-
-def simulation_values_to_xml(values: Dict[str, Any]) -> str:
-    """
-    Render the dialog's values as input XML. The document is produced by `write_case`, the same writer the rest of the project uses, so the dialog cannot drift from the reader.
-    """
-
-    return write_case(build_case_from_values(values))
