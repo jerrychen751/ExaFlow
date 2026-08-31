@@ -61,6 +61,10 @@ class StreamingServer(QtCore.QObject):
         """Return whether the underlying TCP server is currently listening."""
         return self._server.isListening()
 
+    def read_port(self) -> int:
+        """Return the TCP port the server accepts connections on, which a caller that asked for port 0 needs in order to reach it."""
+        return int(self._server.serverPort())
+
     def _on_new_connection(self) -> None:
         """
         Handle new client connection from QTcpServer. Called automatically when newConnection signal is emitted. Accepts the pending connection, closes any existing active connection, and sets up signal handlers for data reception and disconnection.
