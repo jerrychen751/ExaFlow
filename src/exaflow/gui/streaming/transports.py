@@ -26,7 +26,7 @@ class TCPSocketTransport(StreamingTransport):
                 s.sendall(struct.pack('!Q', length))
                 s.sendall(data)
                 return True
-        except Exception as e:
+        except OSError as e:
             print(f"TCP send error: {e}", flush=True)
             return False
 
@@ -34,9 +34,3 @@ class TCPSocketTransport(StreamingTransport):
     def close(self) -> None:
         if self._socket:
             self._socket.close()
-
-class WebSocketTransport(StreamingTransport):
-    def __init__(self, url: str):
-        self._url = url
-    
-    pass

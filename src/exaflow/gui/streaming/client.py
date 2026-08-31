@@ -10,8 +10,8 @@ from .base import (
     DEFAULT_STREAMING_ADDRESS, 
     DEFAULT_STREAMING_PORT
 )
-from .transports import TCPSocketTransport, WebSocketTransport
-from .serializers import PickleSerializer, ImageSerializer
+from .transports import TCPSocketTransport
+from .serializers import PickleSerializer
 
 class StreamingClient:
     """

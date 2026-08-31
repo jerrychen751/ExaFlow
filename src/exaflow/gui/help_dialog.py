@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6 import QtWidgets, QtCore
+from PySide6 import QtWidgets
 from typing import Optional
 
 
