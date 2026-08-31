@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .boundary_conditions import BoundaryCondition
+from .config.boundary_conditions import BoundaryCondition
 from .config.boundaries import Face, collect_faces
 from .config.case import Case
 from .fields import FlowState

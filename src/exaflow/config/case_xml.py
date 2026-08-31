@@ -3,7 +3,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ElementTree
 from xml.dom import minidom
 
-from ..boundary_conditions import BoundaryCondition, parse_boundary_condition
+from .boundary_conditions import BoundaryCondition, parse_boundary_condition
 from .boundaries import Boundaries, Face, FaceCondition
 from .case import Case, SolverOptions
 from .fluid import Fluid

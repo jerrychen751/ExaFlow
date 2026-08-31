@@ -4,7 +4,7 @@ Frozen value types that describe a simulation, plus the reader and writer for th
 
 from __future__ import annotations
 
-from ..boundary_conditions import BoundaryCondition, parse_boundary_condition
+from .boundary_conditions import BoundaryCondition, parse_boundary_condition
 from .boundaries import Boundaries, Face, FaceCondition, collect_faces
 from .case import Case, SolverOptions
 from .fluid import Fluid

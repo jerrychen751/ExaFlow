@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..boundary_conditions import BoundaryCondition
+from .boundary_conditions import BoundaryCondition
 from .boundaries import Boundaries, collect_faces
 from .fluid import Fluid
 from .grid import Grid

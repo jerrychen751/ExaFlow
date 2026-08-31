@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from ..boundary_conditions import BoundaryCondition
+from .boundary_conditions import BoundaryCondition
 
 
 class Face(Enum):

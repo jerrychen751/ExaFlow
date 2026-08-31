@@ -5,7 +5,7 @@ from typing import Callable
 
 import pytest
 
-from exaflow.boundary_conditions import parse_boundary_condition
+from exaflow.config import parse_boundary_condition
 from exaflow.config import (
     Boundaries,
     BoundaryCondition,
