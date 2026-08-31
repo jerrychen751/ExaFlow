@@ -162,6 +162,16 @@ class HelpDialog(QtWidgets.QDialog):
         <li>Vectors are colored by pressure when available</li>
         </ul>
         
+        <h3>Cross-section:</h3>
+        <ul>
+        <li><b>Slice:</b> Cut the result on one axis and show that plane by itself</li>
+        <li><b>Axis:</b> The axis the plane cuts across (X, Y or Z)</li>
+        <li><b>Position:</b> Moves the plane along that axis; the label states the coordinate and its unit</li>
+        <li>The unit is metres for a .vtr file and cells for a CSV file, which carries no physical extent</li>
+        <li>The camera faces the plane and stops rotating; turn Slice off to get the volume and free rotation back</li>
+        <li>The control is disabled for a 1D or 2D result, which is already a cross-section</li>
+        </ul>
+
         <h3>Camera Presets:</h3>
         <ul>
         <li><b>+X, -X:</b> View along positive/negative X-axis</li>

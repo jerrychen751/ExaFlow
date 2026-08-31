@@ -69,6 +69,8 @@ uv run python run_gui.py
 
 The window has a control column on the left and a 3D viewer on the right. Choose a script, set the number of MPI processes, and press Run. The viewer loads the newest result file from the output root while the run continues.
 
+The **Slice** row cuts a 3D result on one axis and shows that plane by itself. Pick the axis, move the position slider, and the camera faces the plane and stops rotating. The position label states the unit: metres for a `.vtr` file, and cells for a CSV file, which carries the indices and no physical extent. A 1D or 2D result is already a cross-section, so the viewer shows it flat and the control stays disabled.
+
 ## Where to look
 
 ```

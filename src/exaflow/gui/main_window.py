@@ -12,7 +12,6 @@ from pathlib import Path
 import pyvista as pv
 from .viewer import PyVistaViewer
 from .help_dialog import HelpDialog
-from .csv_loader import load_total_csv_to_imagedata
 from .streaming import StreamingServer, DEFAULT_STREAMING_PORT
 from .sim_parameters_dialog import SimulationParametersDialog, simulation_values_to_xml
 from .settings_dialog import SettingsDialog, SessionSettings
@@ -218,7 +217,37 @@ class MainWindow(QtWidgets.QMainWindow):
             b.clicked.connect(getattr(self._viewer, meth))
             toolbar.addWidget(b)
 
+        slice_toolbar = QtWidgets.QHBoxLayout()
+
+        self._slice_checkbox = QtWidgets.QCheckBox("Slice")
+        self._slice_checkbox.setChecked(False)
+        self._slice_checkbox.toggled.connect(self._on_slice_toggled)
+        slice_toolbar.addWidget(self._slice_checkbox)
+        slice_toolbar.addSpacing(16)
+
+        slice_toolbar.addWidget(QtWidgets.QLabel("Axis"))
+        self._slice_axis_combo = QtWidgets.QComboBox()
+        self._slice_axis_combo.addItems(["X", "Y", "Z"])
+        self._slice_axis_combo.setCurrentIndex(2)
+        self._slice_axis_combo.setEnabled(False)
+        self._slice_axis_combo.currentIndexChanged.connect(self._on_slice_axis_changed)
+        slice_toolbar.addWidget(self._slice_axis_combo)
+
+        slice_toolbar.addSpacing(16)
+        slice_toolbar.addWidget(QtWidgets.QLabel("Position"))
+        self._slice_position_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self._slice_position_slider.setRange(0, 1000)
+        self._slice_position_slider.setValue(500)
+        self._slice_position_slider.setEnabled(False)
+        self._slice_position_slider.valueChanged.connect(self._on_slice_position_changed)
+        slice_toolbar.addWidget(self._slice_position_slider, 1)
+
+        self._slice_position_label = QtWidgets.QLabel("-")
+        self._slice_position_label.setMinimumWidth(90)
+        slice_toolbar.addWidget(self._slice_position_label)
+
         right_layout.addLayout(toolbar)
+        right_layout.addLayout(slice_toolbar)
         right_layout.addWidget(self._viewer)
         viewer_container = right
 
@@ -367,18 +396,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_file_path(self, file_path: str) -> None:
         try:
             if file_path.lower().endswith(".vtr"):
-                mesh = pv.read(file_path)
-                self._viewer.load_mesh(mesh)  # type: ignore
+                self._viewer.load_vtr(file_path)  # type: ignore
                 self._append_log(f"[{self._now()}] Loaded VTR: {file_path}")
             elif file_path.lower().endswith("_total.csv"):
-                vtk_image_data = load_total_csv_to_imagedata(file_path)
-                mesh = pv.wrap(vtk_image_data)
-                self._viewer.load_mesh(mesh)  # type: ignore
+                self._viewer.load_csv(file_path)  # type: ignore
                 self._append_log(f"[{self._now()}] Loaded CSV: {file_path}")
             else:
                 QtWidgets.QMessageBox.warning(self, "Unsupported file", os.path.basename(file_path))
                 return
             self._last_loaded_path = file_path
+            self._refresh_slice_controls()
         except Exception:
             self._last_loaded_path = file_path
             self._append_log(traceback.format_exc())
@@ -392,8 +419,53 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         try:
             self._viewer.load_mesh(dataset)
+            self._refresh_slice_controls()
         except Exception:
             self._append_log(traceback.format_exc())
+
+    # ------------------------- Cross-section -------------------------
+    def _apply_slice_position(self) -> None:
+        extent = self._viewer.read_slice_extent(self._slice_axis_combo.currentIndex())
+        if extent is None:
+            self._slice_position_label.setText("-")
+            return
+        low, high, unit = extent
+        position = low + (high - low) * self._slice_position_slider.value() / 1000.0
+        self._slice_position_label.setText(f"{position:.3g} {unit}")
+        self._viewer.set_slice_position(position)
+
+    def _refresh_slice_controls(self) -> None:
+        """
+        Match the slice controls to the dataset that is now loaded. A 1D or 2D result is already one plane, so the controls go insensitive and the viewer shows it flat by itself.
+        """
+
+        can_slice = bool(self._viewer.can_slice())
+        self._slice_checkbox.setEnabled(can_slice)
+        self._slice_axis_combo.setEnabled(can_slice and self._slice_checkbox.isChecked())
+        self._slice_position_slider.setEnabled(can_slice and self._slice_checkbox.isChecked())
+        if not can_slice:
+            self._slice_checkbox.setToolTip("This result has fewer than three axes, so it is already a cross-section.")
+            self._slice_position_label.setText("-")
+            return
+        self._slice_checkbox.setToolTip("Cut the result on one axis and face the camera at that plane.")
+        self._apply_slice_position()
+
+    def _on_slice_toggled(self, checked: bool) -> None:
+        self._slice_axis_combo.setEnabled(checked)
+        self._slice_position_slider.setEnabled(checked)
+        if checked:
+            self._apply_slice_position()
+        self._viewer.set_show_slice(bool(checked))
+
+    def _on_slice_axis_changed(self, index: int) -> None:
+        self._slice_position_slider.blockSignals(True)
+        self._slice_position_slider.setValue(500)
+        self._slice_position_slider.blockSignals(False)
+        self._viewer.set_slice_axis(int(index))
+        self._apply_slice_position()
+
+    def _on_slice_position_changed(self, _: int) -> None:
+        self._apply_slice_position()
 
     # ------------------------- Helpers -------------------------
     def _browse_script(self) -> None:

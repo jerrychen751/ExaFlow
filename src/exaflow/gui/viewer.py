@@ -45,11 +45,20 @@ class PyVistaViewer(QtWidgets.QFrame):
         # Vector glyph pipeline
         self._velocity_arrows_actor: Any = None
 
+        self._slice_plane_actor: Any = None
+        self._slice_plane_mesh: Any = None
+        self._scalar_name: Optional[str] = None
+        self._scalar_range: Any = None
+        self._is_index_space: bool = False
+
         # Toggles and settings
         self._show_coordinate_axes: bool = True
         self._show_domain_outline: bool = True
         self._show_cube_axes: bool = True
         self._show_velocity_vectors: bool = False
+        self._show_slice_plane: bool = False
+        self._slice_axis: int = 2
+        self._slice_position: Optional[float] = None
         self._vector_sampling_stride: int = 4  # sampling ratio for vectors
 
         # Color map to mimic blue->red
@@ -79,6 +88,13 @@ class PyVistaViewer(QtWidgets.QFrame):
             self._plotter.remove_actor(self._velocity_arrows_actor)
             self._velocity_arrows_actor = None
 
+        if self._slice_plane_actor is not None:
+            self._plotter.remove_actor(self._slice_plane_actor)
+            self._slice_plane_actor = None
+        self._slice_plane_mesh = None
+        self._scalar_name = None
+        self._scalar_range = None
+
         # Orientation marker visibility per toggle
         if self._show_coordinate_axes and self._coordinate_axes_actor is None:
             self._coordinate_axes_actor = self._plotter.add_axes()  # type: ignore[call-arg]
@@ -97,10 +113,15 @@ class PyVistaViewer(QtWidgets.QFrame):
     def load_csv(self, path: str) -> None:
         vtk_image_data = load_total_csv_to_imagedata(path)
         mesh = pv.wrap(vtk_image_data)
-        self.load_mesh(mesh)
+        self.load_mesh(mesh, is_index_space=True)
 
-    def load_mesh(self, mesh: pv.DataSet) -> None:
+    def load_mesh(self, mesh: pv.DataSet, *, is_index_space: bool = False) -> None:
+        """
+        Show `mesh` and drop whatever was on screen. Set `is_index_space` for a mesh built from a CSV file, which is indexed in cells; leave it false for a `.vtr` file and for a streamed dataset, which carry metres. The slice position label reads this to name its unit.
+        """
+
         self.clear()
+        self._is_index_space = is_index_space
         self._load_mesh(mesh)
 
     def _load_mesh(self, mesh: pv.DataSet) -> None:
@@ -114,11 +135,14 @@ class PyVistaViewer(QtWidgets.QFrame):
             scalar_name = "pressure"
         elif len(mesh.point_data.keys()) > 0:
             scalar_name = list(mesh.point_data.keys())[0]
+        self._scalar_name = scalar_name
 
         # Scalar bar formatting
         scalar_bar_format = "%.3g"
+        self._scalar_range = None
         if scalar_name is not None:
             data_range = mesh.get_data_range(scalar_name, "point")
+            self._scalar_range = data_range
             max_magnitude = max(abs(data_range[0]), abs(data_range[1]))
             if max_magnitude >= 1e4 or (0 < max_magnitude <= 1e-3):
                 scalar_bar_format = "%.2e"
@@ -149,6 +173,7 @@ class PyVistaViewer(QtWidgets.QFrame):
         self._main_mesh_actor = self._plotter.add_mesh(
             surface_mesh,
             scalars=scalar_name,
+            clim=self._scalar_range,  # type: ignore[arg-type]
             cmap=self._color_map,  # type: ignore[arg-type]
             scalar_bar_args=scalar_bar_args,  # type: ignore[arg-type]
         )
@@ -188,19 +213,78 @@ class PyVistaViewer(QtWidgets.QFrame):
         # Update overlays and vectors
         self._update_overlays_and_vectors()
         self._plotter.reset_camera()  # type: ignore[call-arg]
+        flat_axis = self._find_flat_axis()
+        if flat_axis is not None:
+            self._face_plane(flat_axis)
         self._plotter.render()
 
 
     # ------------------ Overlays and vectors ------------------
     def _update_overlays_and_vectors(self) -> None:
+        self._update_slice()
         self._update_outline()
         self._update_cube_axes()
         self._update_vectors()
 
+    def _find_flat_axis(self) -> Optional[int]:
+        """
+        The axis the loaded dataset has no thickness on, or None when all three have a span. A 1D or 2D result is flat, and pyvista cuts nothing out of a flat axis.
+        """
+
+        if self._simulation_data is None:
+            return None
+        bounds = self._simulation_data.bounds
+        for axis in range(3):
+            if bounds[2 * axis + 1] <= bounds[2 * axis]:
+                return axis
+        return None
+
+    def _face_plane(self, axis: int) -> None:
+        self._plotter.enable_parallel_projection()  # type: ignore[call-arg]
+        self._plotter.enable_image_style()  # type: ignore[call-arg]
+        (self._plotter.view_yz, self._plotter.view_zx, self._plotter.view_xy)[axis]()  # type: ignore[call-arg]
+
+    def _update_slice(self) -> None:
+        if self._slice_plane_actor is not None:
+            self._plotter.remove_actor(self._slice_plane_actor)
+            self._slice_plane_actor = None
+        self._slice_plane_mesh = None
+        if self._main_mesh_actor is not None:
+            self._main_mesh_actor.SetVisibility(not self._show_slice_plane)
+
+        if (not self._show_slice_plane) or self._simulation_data is None:
+            if self._find_flat_axis() is None:
+                self._plotter.disable_parallel_projection()  # type: ignore[call-arg]
+                self._plotter.enable_trackball_style()  # type: ignore[call-arg]
+            return
+
+        bounds = self._simulation_data.bounds
+        low = float(bounds[2 * self._slice_axis])
+        high = float(bounds[2 * self._slice_axis + 1])
+        if self._slice_position is None:
+            position = (low + high) / 2.0
+        else:
+            position = min(max(self._slice_position, low), high)
+
+        origin = list(self._dataset_center() or (0.0, 0.0, 0.0))
+        origin[self._slice_axis] = position
+        normal = [0.0, 0.0, 0.0]
+        normal[self._slice_axis] = 1.0
+        self._slice_plane_mesh = self._simulation_data.slice(normal=normal, origin=origin)
+
+        self._slice_plane_actor = self._plotter.add_mesh(
+            self._slice_plane_mesh,
+            scalars=self._scalar_name,
+            clim=self._scalar_range,  # type: ignore[arg-type]
+            cmap=self._color_map,  # type: ignore[arg-type]
+            show_scalar_bar=False,
+        )
+        self._face_plane(self._slice_axis)
+
     def _update_outline(self) -> None:
         if self._simulation_data is None:
             return
-        if self._show_domain_outline:
+        if self._show_domain_outline and not self._show_slice_plane:
             if self._domain_outline_actor is None:
                 domain_outline = self._simulation_data.outline()
                 self._domain_outline_actor = self._plotter.add_mesh(
@@ -285,6 +369,8 @@ class PyVistaViewer(QtWidgets.QFrame):
 
         try:
             mesh = self._simulation_data
+            if self._show_slice_plane and self._slice_plane_mesh is not None:
+                mesh = self._slice_plane_mesh
             mesh_points = np.asarray(mesh.points)
             velocity_vectors = np.asarray(mesh.point_data[vector_field_name])
             num_points = int(mesh_points.shape[0])
@@ -367,6 +453,57 @@ class PyVistaViewer(QtWidgets.QFrame):
     def set_vector_stride(self, stride: int) -> None:
         self._vector_sampling_stride = max(1, int(stride))
         if self._show_velocity_vectors:
+            self._update_vectors()
+            self._plotter.render()
+
+    def can_slice(self) -> bool:
+        """
+        Whether the loaded dataset has three axes of non-zero span. A 1D or 2D result already is one plane and a cut of it returns no points, so the caller disables the control rather than show an empty view.
+        """
+
+        return self._simulation_data is not None and self._find_flat_axis() is None
+
+    def read_slice_extent(self, axis: int) -> Optional[tuple[float, float, str]]:
+        """
+        The low bound, the high bound and the unit word of `axis` (0 for x, 1 for y, 2 for z) in the loaded dataset, such as (0.0, 2.0, "m"). The unit is "cell" for a dataset read from a CSV file, which carries indices and no physical extent. None when no dataset is loaded.
+        """
+
+        if self._simulation_data is None:
+            return None
+        bounds = self._simulation_data.bounds
+        return float(bounds[2 * axis]), float(bounds[2 * axis + 1]), "cell" if self._is_index_space else "m"
+
+    def set_show_slice(self, show: bool) -> None:
+        """
+        Turn the cross-section on or off. On draws one plane and locks the camera to face it; off restores the volume and free rotation.
+        """
+
+        self._show_slice_plane = show
+        self._update_slice()
+        self._update_outline()
+        self._update_vectors()
+        self._plotter.render()
+
+    def set_slice_axis(self, axis: int) -> None:
+        """
+        Set the axis the plane cuts across, 0 for x, 1 for y, 2 for z. The plane moves back to the centre of the new axis.
+        """
+
+        self._slice_axis = axis
+        self._slice_position = None
+        if self._show_slice_plane:
+            self._update_slice()
+            self._update_vectors()
+            self._plotter.render()
+
+    def set_slice_position(self, position: float) -> None:
+        """
+        Move the plane to `position` along the slice axis, in the coordinates of the loaded dataset. A value outside the bounds is clamped to them.
+        """
+
+        self._slice_position = position
+        if self._show_slice_plane:
+            self._update_slice()
             self._update_vectors()
             self._plotter.render()
 
