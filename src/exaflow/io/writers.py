@@ -119,8 +119,11 @@ class VtkWriter:
         ]
         while len(axes) < 3:
             axes.append(np.array([0.0], dtype=float))
+        padded = pressure.shape + (1,) * (3 - pressure.ndim)
+        pressure = np.ascontiguousarray(pressure.reshape(padded))  # (*shape,) -> (nx, ny, nz)
+        components = [np.ascontiguousarray(part.reshape(padded)) for part in components]  # (*shape,) -> (nx, ny, nz) each
         while len(components) < 3:
-            components.append(np.zeros_like(pressure))
+            components.append(np.zeros(padded))
 
         os.makedirs(self._directory, exist_ok=True)
         gridToVTK(
