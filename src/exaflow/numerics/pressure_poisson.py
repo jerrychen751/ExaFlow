@@ -20,6 +20,7 @@ from scipy import sparse
 from scipy.sparse.linalg import cg
 
 from ..config.case import Case
+from ..fields import FlowState
 from ..mpi.subdomain import Subdomain
 
 
@@ -37,11 +38,11 @@ class PoissonSolver:
         """
 
         # Destructure simulation parameters
-        spacing = case.grid.spacing
-        self.dx = spacing[0]
-        self.dy = spacing[1] if len(spacing) > 1 else None
-        self.dz = spacing[2] if len(spacing) > 2 else None
-        self.ng = case.grid.num_ghost_layers
+        self._subdomain = subdomain
+        self._spacing = case.grid.spacing
+        self._interior = subdomain.interior
+        self._lower = tuple(subdomain.shift_interior(axis, -1) for axis in range(case.dimension))
+        self._upper = tuple(subdomain.shift_interior(axis, +1) for axis in range(case.dimension))
         self.rho = case.fluid.rho
         self.ndims = case.dimension
         self.interior_shape = subdomain.shape
@@ -54,12 +55,7 @@ class PoissonSolver:
 
         self._p_flat_prev: np.ndarray | None = None
 
-    def compute_divergence(
-            self,
-            u: np.ndarray,
-            v: np.ndarray,
-            w: np.ndarray,
-        ) -> np.ndarray:
+    def compute_divergence(self, state: FlowState) -> np.ndarray:
         """
         Compute the divergence of the velocity field using second-order central differencing.
 
@@ -67,39 +63,18 @@ class PoissonSolver:
         Returns ∇·u*, which is a term in the RHS of the pressure Poisson equation.
 
         Args:
-            u: Velocity field in the x-direction (includes ghost layers).
-            v: Velocity field in the y-direction (includes ghost layers).
-            w: Velocity field in the z-direction (includes ghost layers).
+            state: The velocity field to measure, ghost layers included. Read, never modified.
 
         Returns:
-            Array of divergence values at interior grid points. The stencil reaches one point beyond each end, so the value at an outermost real point reads a ghost layer and is only as good as whatever last filled it.
+            Array of divergence values at interior grid points, shaped like the block this rank owns. The stencil reaches one point beyond each end, so the value at an outermost real point reads a ghost layer and is only as good as whatever last filled it.
         """
-        # Need a None guard here because if self.ng == 1, hi = 0 which can result in an empty slice as it's the right bound
-        hi = -self.ng + 1 if self.ng > 1 else None # right boundary of "shifted forward" slice
-        lo = -(self.ng + 1) # right boundary of "shifted backward" slice
 
-        if self.ndims == 1:
-            if not self.dx:
-                raise ValueError("Simulation parameters must contain dx")
+        divergence = np.zeros(self.interior_shape, dtype=float)
+        for axis in range(self.ndims):
+            field = state.velocity[axis]
+            divergence += (field[self._upper[axis]] - field[self._lower[axis]]) / (2 * self._spacing[axis])
+        return divergence
 
-            du_dx = (u[self.ng+1:hi] - u[self.ng-1:lo]) / (2 * self.dx)
-            return du_dx
-        elif self.ndims == 2:
-            if not self.dx or not self.dy:
-                raise ValueError("Simulation parameters must contain dx and dy")
-
-            du_dx = (u[self.ng+1:hi, self.ng:-self.ng] - u[self.ng-1:lo, self.ng:-self.ng]) / (2 * self.dx)
-            dv_dy = (v[self.ng:-self.ng, self.ng+1:hi] - v[self.ng:-self.ng, self.ng-1:lo]) / (2 * self.dy)
-            return du_dx + dv_dy
-        else:
-            if not self.dx or not self.dy or not self.dz:
-                raise ValueError("Simulation parameteres must contain dx, dy, and dz")
-            
-            du_dx = (u[self.ng+1:hi, self.ng:-self.ng, self.ng:-self.ng] - u[self.ng-1:lo, self.ng:-self.ng, self.ng:-self.ng]) / (2 * self.dx)
-            dv_dy = (v[self.ng:-self.ng, self.ng+1:hi, self.ng:-self.ng] - v[self.ng:-self.ng, self.ng-1:lo, self.ng:-self.ng]) / (2 * self.dy)
-            dw_dz = (w[self.ng:-self.ng, self.ng:-self.ng, self.ng+1:hi] - w[self.ng:-self.ng, self.ng:-self.ng, self.ng-1:lo]) / (2 * self.dz)
-            return du_dx + dv_dy + dw_dz
-        
     # The discrete Laplacian operator ∇²p = ∂²p/∂x² + ∂²p/∂y² + ∂²p/∂z²
     # Approximated via central differences: ∂²p/∂x² ≈ (p[i+1] - 2p[i] + p[i-1]) / dx²
     def _build_laplacian(self) -> sparse.csr_matrix:
@@ -108,11 +83,8 @@ class PoissonSolver:
         """
 
         if self.ndims == 1:
-            if not self.dx:
-                raise ValueError("Simulation parameters must contain dx")
-
             (nx,) = self.interior_shape
-            return self._build_axis_laplacian(nx, self.dx)
+            return self._build_axis_laplacian(nx, self._spacing[0])
 
         elif self.ndims == 2:
             # 2D pressure grid -> 1D vector via row-major flattening (row by row ordering)
@@ -122,13 +94,10 @@ class PoissonSolver:
 
             # D_xx ⊗ I_y: applies ∂²/∂x², connects points ny apart in the flat vector (x-neighbors)
             # I_x ⊗ D_yy: applies ∂²/∂y², connects adjacent entries in the flat vector (y-neighbors)
-            if not self.dx or not self.dy:
-                raise ValueError("Simulation parameters must contain dx and dy")
-            
             (nx, ny) = self.interior_shape
 
-            Dxx = self._build_axis_laplacian(nx, self.dx) # ∂²/∂x²
-            Dyy = self._build_axis_laplacian(ny, self.dy) # ∂²/∂y²
+            Dxx = self._build_axis_laplacian(nx, self._spacing[0]) # ∂²/∂x²
+            Dyy = self._build_axis_laplacian(ny, self._spacing[1]) # ∂²/∂y²
             
             Ix = sparse.eye(nx, format='csr')
             Iy = sparse.eye(ny, format='csr')
@@ -142,14 +111,11 @@ class PoissonSolver:
             # D_xx ⊗ I_y ⊗ I_z: applies ∂²/∂x², connects points ny*nz apart (x-neighbors)
             # I_x ⊗ D_yy ⊗ I_z: applies ∂²/∂y², connects points nz apart (y-neighbors)
             # I_x ⊗ I_y ⊗ D_zz: applies ∂²/∂z², connects adjacent entries (z-neighbors)
-            if not self.dx or not self.dy or not self.dz:
-                raise ValueError("Simulation parameters must contain dx, dy, and dz")
-
             (nx, ny, nz) = self.interior_shape
 
-            Dxx = self._build_axis_laplacian(nx, self.dx) # ∂²/∂x²
-            Dyy = self._build_axis_laplacian(ny, self.dy) # ∂²/∂y²
-            Dzz = self._build_axis_laplacian(nz, self.dz) # ∂²/∂z²
+            Dxx = self._build_axis_laplacian(nx, self._spacing[0]) # ∂²/∂x²
+            Dyy = self._build_axis_laplacian(ny, self._spacing[1]) # ∂²/∂y²
+            Dzz = self._build_axis_laplacian(nz, self._spacing[2]) # ∂²/∂z²
 
             Ix = sparse.eye(nx, format='csr')
             Iy = sparse.eye(ny, format='csr')
@@ -178,27 +144,21 @@ class PoissonSolver:
         band[points - 1, points - 1] = -1.0
         return band.tocsr() / (spacing ** 2)
 
-    def solve(
-        self,
-        u: np.ndarray,
-        v: np.ndarray,
-        w: np.ndarray,
-        dt: float,
-    ) -> np.ndarray:
+    def solve(self, state: FlowState, dt: float) -> np.ndarray:
         """
         Solve ∇²p = (ρ/dt) · ∇·u* for the pressure field.
 
         The operator carries a zero normal gradient on every face, so it is singular: it fixes the pressure only up to a constant. This removes the mean of the right-hand side, which is the condition such a problem must satisfy to have a solution at all, and returns the one answer whose own mean is zero.
 
         Args:
-            u, v, w: Predicted velocity fields (with ghost layers). Read, never modified.
+            state: The predicted velocity field, ghost layers included. Read, never modified.
             dt: Current timestep size.
 
         Returns:
-            Pressure field at interior grid points (no ghost layers), shaped like self.interior_shape, with a mean of zero.
+            Pressure field at interior grid points (no ghost layers), shaped like the block this rank owns, with a mean of zero.
         """
         # Step 1: Compute RHS = (ρ/dt) · ∇·u*
-        div = self.compute_divergence(u, v, w)
+        div = self.compute_divergence(state)
         rhs = (self.rho / dt) * div
 
         # Step 2: Flatten to 1D vector (row-major to match Kronecker product ordering)
@@ -214,39 +174,40 @@ class PoissonSolver:
         self._p_flat_prev = p_flat.copy()
 
         # Step 5: Reshape back to grid dimensions
-        return (p_flat - p_flat.mean()).reshape(self.interior_shape)
+        return (p_flat - p_flat.mean()).reshape(self.interior_shape)  # (N,) -> interior_shape
 
-    def correct_velocity(
-        self,
-        u: np.ndarray,
-        v: np.ndarray,
-        w: np.ndarray,
-        p: np.ndarray,
-        dt: float,
-    ) -> None:
+    def correct_velocity(self, state: FlowState, pressure: np.ndarray, dt: float) -> None:
         """
         Apply pressure correction: u = u* - (dt/ρ) · ∇p.
 
-        Modifies u, v, w in-place at every interior point, the outermost real point included. The pressure gradient is a central difference, ∂p/∂x ≈ (p[i+1] - p[i-1]) / (2·dx), taken over a pressure array padded by one layer that repeats the edge value. That padding states the same zero normal gradient the Laplacian carries, so the end points need no separate rule.
+        Modifies the velocity of `state` in place at every interior point, the outermost real point included. The pressure gradient is a central difference, ∂p/∂x ≈ (p[i+1] - p[i-1]) / (2·dx), taken over a pressure array padded by one layer that repeats the edge value. That padding states the same zero normal gradient the Laplacian carries, so the end points need no separate rule.
 
-        The ghost layers of u, v and w keep the predicted velocity. The divergence at the outermost real point reads one of them, so the caller refreshes the ghost layers through the ghost exchange and the boundary conditions before that point means anything.
+        The ghost layers keep the predicted velocity. The divergence at the outermost real point reads one of them, so the caller refreshes the ghost layers through the ghost exchange and the boundary conditions before that point means anything.
 
         The compact Laplacian is not the exact divergence of this gradient, because both differences span 2h while the operator spans h. The divergence left behind therefore falls as h^2 at a point whose stencil reads corrected values only, rather than to zero.
 
         Args:
-            u, v, w: Predicted velocity fields (with ghost layers). Modified in-place.
-            p: Pressure field at interior points (from solve()), no ghost layers.
+            state: The predicted velocity field, ghost layers included. Modified in place.
+            pressure: Pressure field at interior points (from solve()), no ghost layers.
             dt: Current timestep size.
         """
         coeff = dt / self.rho
-        interior = tuple(slice(self.ng, -self.ng) for _ in range(self.ndims))
-        padded = np.pad(p, 1, mode="edge")  # (*interior_shape,) -> each axis + 2
+        padded = np.pad(pressure, 1, mode="edge")  # interior_shape -> each axis + 2
 
         # ∂p/∂x_a via central differences over the padded pressure
-        for axis, field in enumerate((u, v, w)[: self.ndims]):
-            spacing = (self.dx, self.dy, self.dz)[axis]
-            if not spacing:
-                raise ValueError(f"Simulation parameters must contain the spacing of axis {axis}")
+        for axis in range(self.ndims):
             lower = tuple(slice(0, -2) if i == axis else slice(1, -1) for i in range(self.ndims))
             upper = tuple(slice(2, None) if i == axis else slice(1, -1) for i in range(self.ndims))
-            field[interior] -= coeff * (padded[upper] - padded[lower]) / (2 * spacing)
+            gradient = (padded[upper] - padded[lower]) / (2 * self._spacing[axis])
+            state.velocity[axis][self._interior] -= coeff * gradient
+
+    def project(self, state: FlowState, dt: float) -> None:
+        """
+        Make `state` as divergence free as this discretization allows, and leave the pressure that did it in `state.pressure`.
+
+        This is the whole corrector half of Chorin's method in one call: solve for the pressure, correct the velocity with its gradient, and record the pressure. The caller runs it after a time-integration stage has produced the predicted velocity.
+        """
+
+        pressure = self.solve(state, dt)
+        self.correct_velocity(state, pressure, dt)
+        state.pressure[self._interior] = pressure

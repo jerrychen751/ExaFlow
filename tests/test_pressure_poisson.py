@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from exaflow.config import Case, Fluid, Grid, TimeControl
+from exaflow.fields import FlowState, allocate_state
 from exaflow.mpi.process_grid import ProcessGrid
 from exaflow.mpi.subdomain import Subdomain
 from exaflow.numerics.pressure_poisson import PoissonSolver
@@ -17,16 +18,18 @@ from exaflow.numerics.pressure_poisson import PoissonSolver
 TIME_STEP = 0.25
 
 
-def build_swirl(subdomain: Subdomain) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def build_swirl(subdomain: Subdomain) -> FlowState:
     """
-    A smooth velocity field over the padded block whose divergence is neither zero nor constant, so a solver that dropped a term or read the wrong axis cannot pass by accident. The third component is uniform, so a 1D or 2D block ignores it.
+    A state whose velocity is smooth over the padded block and whose divergence is neither zero nor constant, so a solver that dropped a term or read the wrong axis cannot pass by accident.
     """
 
     padded = subdomain.padded_shape
+    dimension = len(padded)
     grid = np.meshgrid(*(np.arange(length, dtype=float) for length in padded), indexing="ij")
-    ones = np.ones(padded)
-    across = grid[1] if len(padded) > 1 else grid[0]
-    return np.sin(0.4 * grid[0]) * ones, np.cos(0.4 * across) * ones, 0.2 * ones
+    state = allocate_state(subdomain, dimension)
+    for axis in range(dimension):
+        state.velocity[axis][...] = np.sin(0.4 * grid[axis] + 0.7 * axis)
+    return state
 
 
 def project_a_shear_flow(points: int) -> tuple[float, float]:
@@ -43,13 +46,13 @@ def project_a_shear_flow(points: int) -> tuple[float, float]:
     solver = PoissonSolver(case, subdomain)
     coordinate = (np.arange(points + 2) - 1) * case.grid.spacing[0]
     x, y = np.meshgrid(coordinate, coordinate, indexing="ij")
-    u = np.sin(2 * np.pi * x) * np.cos(np.pi * y)
-    v = np.cos(np.pi * x) * np.sin(2 * np.pi * y)
-    w = np.zeros_like(u)
+    state = allocate_state(subdomain, 2)
+    state.velocity[0][...] = np.sin(2 * np.pi * x) * np.cos(np.pi * y)
+    state.velocity[1][...] = np.cos(np.pi * x) * np.sin(2 * np.pi * y)
 
-    before = float(np.abs(solver.compute_divergence(u, v, w)[1:-1, 1:-1]).max())
-    solver.correct_velocity(u, v, w, solver.solve(u, v, w, TIME_STEP), TIME_STEP)
-    return before, float(np.abs(solver.compute_divergence(u, v, w)[1:-1, 1:-1]).max())
+    before = float(np.abs(solver.compute_divergence(state)[1:-1, 1:-1]).max())
+    solver.project(state, TIME_STEP)
+    return before, float(np.abs(solver.compute_divergence(state)[1:-1, 1:-1]).max())
 
 
 @pytest.fixture
@@ -93,9 +96,11 @@ def test_a_divergence_free_field_needs_no_pressure(
     """
 
     solver, subdomain = build_poisson_solver(shape)
-    padded = subdomain.padded_shape
+    uniform = allocate_state(subdomain, len(shape))
+    for axis, value in enumerate((3.0, -1.0, 0.5)[: len(shape)]):
+        uniform.velocity[axis][...] = value
 
-    pressure = solver.solve(np.full(padded, 3.0), np.full(padded, -1.0), np.full(padded, 0.5), TIME_STEP)
+    pressure = solver.solve(uniform, TIME_STEP)
 
     assert pressure.shape == subdomain.shape
     assert np.allclose(pressure, 0.0)
@@ -112,7 +117,7 @@ def test_the_answer_has_a_mean_of_zero(
 
     solver, subdomain = build_poisson_solver(shape)
 
-    pressure = solver.solve(*build_swirl(subdomain), TIME_STEP)
+    pressure = solver.solve(build_swirl(subdomain), TIME_STEP)
 
     assert pressure.mean() == pytest.approx(0.0, abs=1e-12)
 
@@ -128,7 +133,7 @@ def test_the_pressure_scales_with_the_density(
     heavy, _ = build_poisson_solver((10, 9), 3.0)
     field = build_swirl(subdomain)
 
-    assert np.allclose(heavy.solve(*field, TIME_STEP), 3.0 * light.solve(*field, TIME_STEP))
+    assert np.allclose(heavy.solve(field, TIME_STEP), 3.0 * light.solve(field, TIME_STEP))
 
 
 def test_the_same_field_solves_to_the_same_pressure_twice(
@@ -141,8 +146,8 @@ def test_the_same_field_solves_to_the_same_pressure_twice(
     solver, subdomain = build_poisson_solver((10, 9))
     field = build_swirl(subdomain)
 
-    first = solver.solve(*field, TIME_STEP)
-    second = solver.solve(*field, TIME_STEP)
+    first = solver.solve(field, TIME_STEP)
+    second = solver.solve(field, TIME_STEP)
 
     assert np.array_equal(first, second)
 
@@ -157,13 +162,32 @@ def test_the_projection_never_raises_the_divergence(
     """
 
     solver, subdomain = build_poisson_solver(shape)
-    velocity = build_swirl(subdomain)
+    state = build_swirl(subdomain)
 
-    before = float(np.abs(solver.compute_divergence(*velocity)).max())
-    solver.correct_velocity(*velocity, solver.solve(*velocity, TIME_STEP), TIME_STEP)
-    after = float(np.abs(solver.compute_divergence(*velocity)).max())
+    before = float(np.abs(solver.compute_divergence(state)).max())
+    solver.project(state, TIME_STEP)
+    after = float(np.abs(solver.compute_divergence(state)).max())
 
     assert after < before
+
+
+@pytest.mark.parametrize("shape", [(20,), (12, 11), (10, 9, 8)])
+def test_project_records_the_pressure_that_did_the_correction(
+    build_poisson_solver: Callable[..., tuple[PoissonSolver, Subdomain]],
+    shape: tuple[int, ...],
+) -> None:
+    """
+    project is the whole corrector half of Chorin's method, so the caller keeps the pressure it used. It reaches the interior of the state and leaves the ghost layers for the exchange to fill.
+    """
+
+    solver, subdomain = build_poisson_solver(shape)
+    state = build_swirl(subdomain)
+
+    expected = solver.solve(state, TIME_STEP)
+    solver.project(state, TIME_STEP)
+
+    assert np.allclose(state.pressure[subdomain.interior], expected)
+    assert state.pressure[(0,) * len(shape)] == 0.0
 
 
 def test_the_correction_reaches_every_real_point(
@@ -174,12 +198,12 @@ def test_the_correction_reaches_every_real_point(
     """
 
     solver, subdomain = build_poisson_solver((10, 9))
-    velocity = build_swirl(subdomain)
-    before = velocity[0].copy()
+    state = build_swirl(subdomain)
+    before = state.velocity[0].copy()
 
-    solver.correct_velocity(*velocity, solver.solve(*velocity, TIME_STEP), TIME_STEP)
+    solver.correct_velocity(state, solver.solve(state, TIME_STEP), TIME_STEP)
 
-    changed = velocity[0] != before
+    changed = state.velocity[0] != before
     assert changed[subdomain.interior].all()
     assert not changed[0].any()
     assert not changed[-1].any()
@@ -198,14 +222,14 @@ def test_the_pad_depth_changes_nothing_the_solver_returns(
     case = build_case((8, 7), grid=Grid((8, 7), (1.0, 1.0), num_ghost_layers))
     subdomain = build_subdomain(case.grid)
     solver = PoissonSolver(case, subdomain)
-    velocity = build_swirl(subdomain)
+    state = build_swirl(subdomain)
 
-    before = float(np.abs(solver.compute_divergence(*velocity)).max())
-    pressure = solver.solve(*velocity, TIME_STEP)
-    solver.correct_velocity(*velocity, pressure, TIME_STEP)
+    before = float(np.abs(solver.compute_divergence(state)).max())
+    pressure = solver.solve(state, TIME_STEP)
+    solver.correct_velocity(state, pressure, TIME_STEP)
 
     assert pressure.shape == subdomain.shape
-    assert float(np.abs(solver.compute_divergence(*velocity)).max()) < before
+    assert float(np.abs(solver.compute_divergence(state)).max()) < before
 
 
 @pytest.mark.parametrize("shape", [(2,), (2, 2), (2, 2, 2)])
@@ -218,12 +242,12 @@ def test_the_fewest_points_an_axis_allows_still_projects(
     """
 
     solver, subdomain = build_poisson_solver(shape)
-    velocity = build_swirl(subdomain)
+    state = build_swirl(subdomain)
 
-    before = float(np.abs(solver.compute_divergence(*velocity)).max())
-    solver.correct_velocity(*velocity, solver.solve(*velocity, TIME_STEP), TIME_STEP)
+    before = float(np.abs(solver.compute_divergence(state)).max())
+    solver.project(state, TIME_STEP)
 
-    assert float(np.abs(solver.compute_divergence(*velocity)).max()) < before
+    assert float(np.abs(solver.compute_divergence(state)).max()) < before
 
 
 def test_the_residual_divergence_falls_at_second_order() -> None:
