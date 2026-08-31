@@ -50,14 +50,11 @@ class PoissonSolver:
         laplacian = self._build_laplacian()
 
         # The pure Neumann Laplacian is singular (pressure is only defined up to a constant).
-        pinned = laplacian.tolil()
-        pinned[0, :] = 0
-        pinned[0, 0] = 1.0
-        self._laplacian = pinned.tocsr()
+        self._operator = -laplacian
 
         self._p_flat_prev: np.ndarray | None = None
 
-    def _compute_divergence(
+    def compute_divergence(
             self,
             u: np.ndarray,
             v: np.ndarray,
@@ -75,7 +72,7 @@ class PoissonSolver:
             w: Velocity field in the z-direction (includes ghost layers).
 
         Returns:
-            Array of divergence values at interior grid points.
+            Array of divergence values at interior grid points. The stencil reaches one point beyond each end, so the value at an outermost real point reads a ghost layer and is only as good as whatever last filled it.
         """
         # Need a None guard here because if self.ng == 1, hi = 0 which can result in an empty slice as it's the right bound
         hi = -self.ng + 1 if self.ng > 1 else None # right boundary of "shifted forward" slice
@@ -115,13 +112,7 @@ class PoissonSolver:
                 raise ValueError("Simulation parameters must contain dx")
 
             (nx,) = self.interior_shape
-            L = sparse.diags(
-                diagonals=[1, -2, 1],
-                offsets=[-1, 0, 1],
-                shape=(nx, nx),
-                format='csr'
-            ) / (self.dx ** 2)
-            return L.tocsr()
+            return self._build_axis_laplacian(nx, self.dx)
 
         elif self.ndims == 2:
             # 2D pressure grid -> 1D vector via row-major flattening (row by row ordering)
@@ -136,18 +127,8 @@ class PoissonSolver:
             
             (nx, ny) = self.interior_shape
 
-            Dxx = sparse.diags( # ∂²/∂x²
-                diagonals=[1, -2, 1],
-                offsets=[-1, 0, 1],
-                shape=(nx, nx),
-                format='csr'
-            ) / (self.dx ** 2)
-            Dyy = sparse.diags( # ∂²/∂y²
-                diagonals=[1, -2, 1],
-                offsets=[-1, 0, 1],
-                shape=(ny, ny),
-                format='csr'
-            ) / (self.dy ** 2)
+            Dxx = self._build_axis_laplacian(nx, self.dx) # ∂²/∂x²
+            Dyy = self._build_axis_laplacian(ny, self.dy) # ∂²/∂y²
             
             Ix = sparse.eye(nx, format='csr')
             Iy = sparse.eye(ny, format='csr')
@@ -166,24 +147,9 @@ class PoissonSolver:
 
             (nx, ny, nz) = self.interior_shape
 
-            Dxx = sparse.diags( # ∂²/∂x²
-                diagonals=[1, -2, 1],
-                offsets=[-1, 0, 1],
-                shape=(nx, nx),
-                format='csr'
-            ) / (self.dx ** 2)
-            Dyy = sparse.diags( # ∂²/∂y²
-                diagonals=[1, -2, 1],
-                offsets=[-1, 0, 1],
-                shape=(ny, ny),
-                format='csr'
-            ) / (self.dy ** 2)
-            Dzz = sparse.diags( # ∂²/∂z²
-                diagonals=[1, -2, 1],
-                offsets=[-1, 0, 1],
-                shape=(nz, nz),
-                format='csr'
-            ) / (self.dz ** 2)
+            Dxx = self._build_axis_laplacian(nx, self.dx) # ∂²/∂x²
+            Dyy = self._build_axis_laplacian(ny, self.dy) # ∂²/∂y²
+            Dzz = self._build_axis_laplacian(nz, self.dz) # ∂²/∂z²
 
             Ix = sparse.eye(nx, format='csr')
             Iy = sparse.eye(ny, format='csr')
@@ -197,6 +163,21 @@ class PoissonSolver:
 
         raise ValueError(f"Unsupported number of dimensions: {self.ndims}")
 
+    def _build_axis_laplacian(self, points: int, spacing: float) -> sparse.csr_matrix:
+        """
+        The second-difference operator along one axis, with a zero normal pressure gradient at each end. A ghost value equal to the edge value turns the two end rows into -1 instead of -2, so every row sums to zero and the operator is the pure Neumann one. The matrix stays symmetric, which conjugate gradient needs.
+        """
+
+        band = sparse.diags(
+            diagonals=[1.0, -2.0, 1.0],
+            offsets=[-1, 0, 1],
+            shape=(points, points),
+            format='lil'
+        )
+        band[0, 0] = -1.0
+        band[points - 1, points - 1] = -1.0
+        return band.tocsr() / (spacing ** 2)
+
     def solve(
         self,
         u: np.ndarray,
@@ -207,32 +188,33 @@ class PoissonSolver:
         """
         Solve ∇²p = (ρ/dt) · ∇·u* for the pressure field.
 
+        The operator carries a zero normal gradient on every face, so it is singular: it fixes the pressure only up to a constant. This removes the mean of the right-hand side, which is the condition such a problem must satisfy to have a solution at all, and returns the one answer whose own mean is zero.
+
         Args:
-            u, v, w: Predicted velocity fields (with ghost layers).
+            u, v, w: Predicted velocity fields (with ghost layers). Read, never modified.
             dt: Current timestep size.
 
         Returns:
-            Pressure field at interior grid points (no ghost layers), shaped like self.interior_shape.
+            Pressure field at interior grid points (no ghost layers), shaped like self.interior_shape, with a mean of zero.
         """
         # Step 1: Compute RHS = (ρ/dt) · ∇·u*
-        div = self._compute_divergence(u, v, w)
+        div = self.compute_divergence(u, v, w)
         rhs = (self.rho / dt) * div
 
         # Step 2: Flatten to 1D vector (row-major to match Kronecker product ordering)
         rhs_flat = rhs.ravel()
 
-        # Step 3: Pin one pressure value to remove nullspace singularity.
-        # Setting rhs[0] = 0 with the corresponding row zeroed + diagonal=1 fixes p[0] = 0.
-        rhs_flat[0] = 0.0
+        # Step 3: A pure Neumann problem is solvable only where the right-hand side sums to zero, so remove its mean.
+        rhs_flat = rhs_flat - rhs_flat.mean()
 
         # Step 4: Solve with conjugate gradient
-        p_flat, info = cg(self._laplacian, rhs_flat, x0=self._p_flat_prev)
+        p_flat, info = cg(self._operator, -rhs_flat, x0=self._p_flat_prev)
         if info != 0:
             raise RuntimeError(f"Conjugate gradient solver did not converge (info={info})")
         self._p_flat_prev = p_flat.copy()
 
         # Step 5: Reshape back to grid dimensions
-        return p_flat.reshape(self.interior_shape)
+        return (p_flat - p_flat.mean()).reshape(self.interior_shape)
 
     def correct_velocity(
         self,
@@ -245,8 +227,11 @@ class PoissonSolver:
         """
         Apply pressure correction: u = u* - (dt/ρ) · ∇p.
 
-        Modifies u, v, w in-place at interior points.
-        The pressure gradient is computed with central differences: ∂p/∂x ≈ (p[i+1] - p[i-1]) / (2·dx).
+        Modifies u, v, w in-place at every interior point, the outermost real point included. The pressure gradient is a central difference, ∂p/∂x ≈ (p[i+1] - p[i-1]) / (2·dx), taken over a pressure array padded by one layer that repeats the edge value. That padding states the same zero normal gradient the Laplacian carries, so the end points need no separate rule.
+
+        The ghost layers of u, v and w keep the predicted velocity. The divergence at the outermost real point reads one of them, so the caller refreshes the ghost layers through the ghost exchange and the boundary conditions before that point means anything.
+
+        The compact Laplacian is not the exact divergence of this gradient, because both differences span 2h while the operator spans h. The divergence left behind therefore falls as h^2 at a point whose stencil reads corrected values only, rather than to zero.
 
         Args:
             u, v, w: Predicted velocity fields (with ghost layers). Modified in-place.
@@ -254,22 +239,14 @@ class PoissonSolver:
             dt: Current timestep size.
         """
         coeff = dt / self.rho
-        ng = self.ng
+        interior = tuple(slice(self.ng, -self.ng) for _ in range(self.ndims))
+        padded = np.pad(p, 1, mode="edge")  # (*interior_shape,) -> each axis + 2
 
-        if self.ndims >= 1 and self.dx:
-            # ∂p/∂x via central differences
-            dp_dx = (p[2:, ...] - p[:-2, ...]) / (2 * self.dx)
-            u_slice = tuple(slice(ng + 1, -(ng + 1)) if i == 0 else slice(ng, -ng) for i in range(self.ndims))
-            u[u_slice] -= coeff * dp_dx
-
-        if self.ndims >= 2 and self.dy:
-            # ∂p/∂y via central differences
-            dp_dy = (p[:, 2:, ...] - p[:, :-2, ...]) / (2 * self.dy)
-            v_slice = tuple(slice(ng + 1, -(ng + 1)) if i == 1 else slice(ng, -ng) for i in range(self.ndims))
-            v[v_slice] -= coeff * dp_dy
-
-        if self.ndims >= 3 and self.dz:
-            # ∂p/∂z via central differences
-            dp_dz = (p[:, :, 2:] - p[:, :, :-2]) / (2 * self.dz)
-            w_slice = tuple(slice(ng + 1, -(ng + 1)) if i == 2 else slice(ng, -ng) for i in range(self.ndims))
-            w[w_slice] -= coeff * dp_dz
+        # ∂p/∂x_a via central differences over the padded pressure
+        for axis, field in enumerate((u, v, w)[: self.ndims]):
+            spacing = (self.dx, self.dy, self.dz)[axis]
+            if not spacing:
+                raise ValueError(f"Simulation parameters must contain the spacing of axis {axis}")
+            lower = tuple(slice(0, -2) if i == axis else slice(1, -1) for i in range(self.ndims))
+            upper = tuple(slice(2, None) if i == axis else slice(1, -1) for i in range(self.ndims))
+            field[interior] -= coeff * (padded[upper] - padded[lower]) / (2 * spacing)
