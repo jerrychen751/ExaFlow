@@ -80,6 +80,7 @@ src/exaflow/
         fluid.py # Fluid(rho, nu)
         grid.py # Grid(shape, extent, num_ghost_layers) -> spacing, dimension
         boundaries.py # Face, FaceCondition, Boundaries
+        boundary_conditions.py # BoundaryCondition and the strict parser for its names
         initial_conditions.py # UniformValue, StepValue as value types
         time_control.py # TimeControl, OutputControl
         case_xml.py # read_case and write_case: one field map, both directions
@@ -103,9 +104,12 @@ src/exaflow/
         csv.py # CSV formatting and the atomic write
         storage.py # picks the run folder under ~/Documents/ExaFlow
     gui/
-        main_window.py # controls, run process, output watcher
+        main_window.py # wires the panels, the dialogs and the viewer together
+        simulation_runner.py # the child process one run happens in
+        result_watcher.py # reports the newest result file in the output root
+        slice_controller.py # the cross-section row and the viewer state behind it
         viewer.py # PyVista 3D view
-        sim_parameters_dialog.py # builds an input XML from the form
+        sim_parameters_dialog.py # edits one Case and returns it
         streaming/ # sends fields from a running job to the viewer
 examples/ # runnable drivers and an input XML
 simulations/ # scaffold script for a new simulation directory
@@ -231,7 +235,7 @@ uv run pytest tests/test_numerics.py
 
 The first line runs everything. The second leaves out the launcher and the visualization stack, the third keeps only the runs that start `mpiexec`, and the fourth runs one module.
 
-310 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
+313 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
 
 Three markers select a subset:
 
@@ -300,9 +304,9 @@ Pass `--keep-icon` to skip drawing the icon again.
 - MPI domain decomposition and ghost exchange, verified rank-count independent
 - All boundary condition types (except time-dependent)
 - CSV and VTK output
-- 310 tests, and `uv run mypy src tests` reporting no issues
+- 313 tests, and `uv run mypy src tests` reporting no issues
 
 **In progress:**
 - Pressure projection (Poisson solver for incompressibility)
 
-Without pressure, the solver evolves momentum but does not enforce that the velocity field is divergence-free. `SolverOptions` raises `NotImplementedError` when you set `include_pressure=True`, so leave it at the default `False`. `pressure_poisson.py` builds a Laplacian over one rank's block and solves it with conjugate gradient; it has no ghost exchange, so it is correct on a single rank only and is not wired into the time loop.
+Without pressure, the solver evolves momentum but does not enforce that the velocity field is divergence-free. `SolverOptions` raises `NotImplementedError` when you set `include_pressure=True`, so leave it at the default `False`. `pressure_poisson.py` builds a pure Neumann Laplacian over one rank's block and solves it with conjugate gradient. Its `project` method takes a `FlowState` and does the whole corrector half of Chorin's method, so the remaining work is the ghost exchange: it has none, which makes it correct on a single rank only and keeps it out of the time loop.
