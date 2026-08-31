@@ -109,7 +109,7 @@ src/exaflow/
         streaming/ # sends fields from a running job to the viewer
 examples/ # runnable drivers and an input XML
 simulations/ # scaffold script for a new simulation directory
-tests/ # pytest suite, including a rank-count independence check
+tests/ # pytest suite, one module per source module, plus conftest.py and the two mpiexec helper scripts
 packaging/ # PyInstaller spec and the desktop app build script
 ```
 
@@ -214,7 +214,7 @@ This writes the package into `pyproject.toml`, resolves it into `uv.lock`, and i
 ### Check types
 
 ```bash
-uv run mypy src
+uv run mypy src tests
 uv run mypy examples packaging run_gui.py simulations
 ```
 
@@ -224,9 +224,42 @@ Both report no issues today. Keep it that way. When a new error appears, fix the
 
 ```bash
 uv run pytest
+uv run pytest -m "not mpi and not gui"
+uv run pytest -m mpi
+uv run pytest tests/test_numerics.py
 ```
 
-The suite runs in about a second. It covers the configuration values and the XML round trip, the block decomposition, the operators against analytic solutions, the convergence order of each Runge-Kutta scheme, and the rank-count independence of a whole run under `mpiexec`.
+The first line runs everything. The second leaves out the launcher and the visualization stack, the third keeps only the runs that start `mpiexec`, and the fourth runs one module.
+
+310 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
+
+Three markers select a subset:
+
+| Marker | Selects |
+|---|---|
+| `mpi` | a test that starts `mpiexec`. Every one is skipped when no launcher is on PATH |
+| `gui` | a test that imports vtk, pyvista or PySide6. None of them needs a display |
+| `slow` | a test that starts a subprocess |
+
+`tests/_run_case.py` and `tests/_run_periodic_exchange.py` are the two scripts `mpiexec` starts. pytest collects `test_*.py` only, so it leaves them alone. Each one reports a wrong answer through its exit status.
+
+`pyproject.toml` turns every warning into an error and rejects an unregistered marker, so a new warning from this repository fails the run instead of reaching the log unread. One test carries an ignore of its own, because vtk sets the shape of a numpy array and numpy 2.5 deprecated that.
+
+What the suite holds:
+
+| Module | What it checks |
+|---|---|
+| `test_config.py` | every value type, and the error each one raises for a setting the solver cannot use |
+| `test_case_xml.py` | the round trip at 1D, 2D and 3D, and the message for each malformed element |
+| `test_process_grid.py`, `test_subdomain.py` | the factor search, the block bounds, the face tests and the neighbor ranks |
+| `test_fields.py` | the state arithmetic each Runge-Kutta stage needs, and a step box that lands the same at any rank count |
+| `test_boundary_application.py` | what each of the five conditions writes, and what it leaves alone |
+| `test_numerics.py` | the operators against analytic answers, and the convergence order of each scheme |
+| `test_ghost_exchange.py` | the serial periodic copy, and the periodic wrap under `mpiexec` |
+| `test_pressure_poisson.py` | the operator symmetry, and that the residual divergence falls at second order |
+| `test_io.py`, `test_csv_loader.py` | the CSV format, the atomic write, the run folder, and the loader the GUI reads with |
+| `test_solver.py` | the time step limits, the output schedule, and the rank-count independence of a whole run |
+| `test_cli.py`, `test_streaming.py` | the console entry point, and the length-prefixed stream between a run and the viewer |
 
 For a numerical change, also compare output against a run made before it:
 
@@ -267,7 +300,7 @@ Pass `--keep-icon` to skip drawing the icon again.
 - MPI domain decomposition and ghost exchange, verified rank-count independent
 - All boundary condition types (except time-dependent)
 - CSV and VTK output
-- A pytest suite, and `uv run mypy src` reporting no issues
+- 310 tests, and `uv run mypy src tests` reporting no issues
 
 **In progress:**
 - Pressure projection (Poisson solver for incompressibility)
