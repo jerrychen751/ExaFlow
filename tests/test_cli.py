@@ -17,18 +17,21 @@ pytestmark = pytest.mark.slow
 @pytest.fixture
 def run_exaflow(tmp_path: Path, build_case: Callable[..., Case]) -> Callable[..., subprocess.CompletedProcess[str]]:
     """
-    Return a launcher that writes a two-step 2D case to `<tmp_path>/<name>.xml`, then runs the console entry point on it with the output root pointed at `<tmp_path>/runs`. The entry point starts MPI, so it runs in a subprocess and not inside pytest.
+    Return a launcher that writes a two-step 2D case to `<tmp_path>/<name>.xml`, then runs the console entry point with the output root pointed at `<tmp_path>/runs`. Set `num_procs` above one to place that command under `mpiexec`.
     """
 
-    def run(*arguments: str, name: str = "tiny") -> subprocess.CompletedProcess[str]:
+    def run(*arguments: str, name: str = "tiny", num_procs: int = 1) -> subprocess.CompletedProcess[str]:
         case = build_case(
             (6, 5),
             time=TimeControl(2, 0.25, 1),
             initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.0),))),
         )
         (tmp_path / f"{name}.xml").write_text(write_case(case), encoding="utf-8")
+        command = [sys.executable, "-m", "exaflow.cli", *arguments]
+        if num_procs > 1:
+            command = ["mpiexec", "-n", str(num_procs), *command]
         return subprocess.run(
-            [sys.executable, "-m", "exaflow.cli", *arguments],
+            command,
             capture_output=True,
             text=True,
             timeout=600,
@@ -76,10 +79,21 @@ def test_input_xml_names_the_same_option_as_case(
     run_exaflow: Callable[..., subprocess.CompletedProcess[str]],
 ) -> None:
     """
-    The older driver scripts pass --input-xml, so the entry point keeps it as a second spelling of --case.
+    Existing external commands can still pass --input-xml, but current documentation uses --case.
     """
 
     completed = run_exaflow("run", "--input-xml", str(tmp_path / "tiny.xml"))
+
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    assert len(list((tmp_path / "runs").iterdir())) == 1
+
+
+@pytest.mark.mpi
+def test_mpiexec_runs_the_standard_cli_entry_point(
+    tmp_path: Path,
+    run_exaflow: Callable[..., subprocess.CompletedProcess[str]],
+) -> None:
+    completed = run_exaflow("run", "--case", str(tmp_path / "tiny.xml"), num_procs=2)
 
     assert completed.returncode == 0, completed.stderr[-2000:]
     assert len(list((tmp_path / "runs").iterdir())) == 1
