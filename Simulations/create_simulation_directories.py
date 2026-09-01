@@ -14,10 +14,8 @@ def main() -> None:
     simulations_dir = Path(__file__).resolve().parent
     examples_dir = simulations_dir.parent / "examples"
     src_xml = examples_dir / "input_template.xml"
-    src_py = examples_dir / "run_simulation_template.py"
-    for template_path in (src_xml, src_py):
-        if not template_path.exists():
-            raise FileNotFoundError(f"Template not found: {template_path}")
+    if not src_xml.exists():
+        raise FileNotFoundError(f"Template not found: {src_xml}")
 
     target_root = Path(args.target_dir).resolve()
     target_root.mkdir(parents=True, exist_ok=True)
@@ -27,11 +25,11 @@ def main() -> None:
         metadata_path.write_text(
             "Do not modify this file\n"
             "Created by create_simulation_directories.py\n"
-            "Contains build/ directory with in/ and run_simulation.py\n"
+            "Contains build/in/input.xml\n"
             "in/ has input.xml where you specify simulation parameters\n"
             "Output CSVs and VTK files go to one run folder under ~/Documents/ExaFlow\n"
             "Set EXAFLOW_OUTPUT_ROOT to write those run folders somewhere else\n"
-            "run_simulation.py is the script to run the simulation\n"
+            "Run with: mpiexec -n 4 exaflow run --case build/in/input.xml\n"
             f"Location: {target_root}\n"
             f"Date: {datetime.now().strftime('%Y-%m-%d')}\n",
             encoding="utf-8",
@@ -46,11 +44,6 @@ def main() -> None:
     if not dst_xml.exists():
         shutil.copyfile(src_xml, dst_xml)
         print(f"Copied input.xml to {dst_xml}")
-
-    dst_py = build_dir / "run_simulation.py"
-    if not dst_py.exists():
-        shutil.copyfile(src_py, dst_py)
-        print(f"Copied run_simulation.py to {dst_py}")
 
     print(f"Created directories and files in {build_dir}")
 
