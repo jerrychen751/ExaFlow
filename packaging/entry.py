@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import runpy
 import sys
 
 
@@ -27,23 +26,41 @@ def configure_bundled_mpi() -> None:
 
 def main() -> int:
     """
-    Start the ExaFlow window, or run one simulation script when the first argument is --run-script. mpirun starts the bundled app once for each rank in that second mode, because a frozen bundle holds no separate Python interpreter to start.
+    Start the ExaFlow window when no argument is present. Answer `--check-bundle` here, and route every other argument to the standard CLI, because each MPI rank restarts this bundled executable.
     """
 
     configure_bundled_mpi()
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--run-script":
-        if len(sys.argv) < 3:
-            print("--run-script needs the path of a Python script.", file=sys.stderr)
-            return 2
-        script_path = sys.argv[2]
-        sys.argv = [script_path, *sys.argv[3:]]
-        runpy.run_path(script_path, run_name="__main__")
-        return 0
+    if len(sys.argv) > 1 and sys.argv[1] == "--check-bundle":
+        return _check_bundle()
+    if len(sys.argv) > 1:
+        from exaflow.cli import main as start_cli
+
+        return start_cli(sys.argv[1:])
 
     from exaflow.gui.app import main as start_gui
 
     return start_gui()
+
+
+def _check_bundle() -> int:
+    import mpi4py
+
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    mpi4py.rc.initialize = False
+    import PySide6.QtWidgets
+    import exaflow.gui.app
+    import exaflow.numerics.pressure_poisson
+    import pyvista
+    import pyvistaqt
+    import scipy.sparse
+    import vtkmodules.all
+    from mpi4py import MPI
+
+    __import__("vtk")
+    PySide6.QtWidgets.QApplication([])
+    print(f"The bundle imports scipy, VTK, PySide6 and {MPI.Get_library_version().split(',')[0]}")
+    return 0
 
 
 if __name__ == "__main__":
