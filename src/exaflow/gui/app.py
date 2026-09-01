@@ -21,5 +21,5 @@ def main() -> int:
     qt_application.installEventFilter(SelectableLabels(qt_application))
     main_window = MainWindow()
     main_window.resize(1200, 800)
-    main_window.show()
+    main_window.showMaximized()
     return qt_application.exec()
