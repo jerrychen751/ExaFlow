@@ -147,9 +147,12 @@ class PyVistaViewer(QtWidgets.QFrame):
         scalar_bar_format = "%.3g"
         self._scalar_range = None
         if scalar_name is not None:
-            data_range = mesh.get_data_range(scalar_name, "point")
-            self._scalar_range = data_range
-            max_magnitude = max(abs(data_range[0]), abs(data_range[1]))
+            low, high = (float(bound) for bound in mesh.get_data_range(scalar_name, "point"))
+            if high - low <= abs(high) * 1e-12:
+                padding = abs(high) * 0.05 if high != 0.0 else 1.0
+                low, high = high - padding, high + padding
+            self._scalar_range = (low, high)
+            max_magnitude = max(abs(low), abs(high))
             if max_magnitude >= 1e4 or (0 < max_magnitude <= 1e-3):
                 scalar_bar_format = "%.2e"
 
