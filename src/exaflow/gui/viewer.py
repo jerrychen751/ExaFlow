@@ -127,6 +127,20 @@ class PyVistaViewer(QtWidgets.QFrame):
         self._is_index_space = is_index_space
         self._load_mesh(mesh)
 
+    def describe_time_level(self) -> str:
+        """
+        Where the run had reached when it wrote the loaded file, as ` (step 400, t = 0.8 s)`, or an empty string unless the file states both the step and the time. Every file ExaFlow writes states both; a file from another tool need not.
+        """
+
+        if self._simulation_data is None:
+            return ""
+        field_data = self._simulation_data.GetFieldData()
+        step = field_data.GetArray("StepIndex")
+        moment = field_data.GetArray("TimeValue")
+        if step is None or moment is None:
+            return ""
+        return f" (step {int(step.GetTuple1(0))}, t = {float(moment.GetTuple1(0)):.6g} s)"
+
     def _load_mesh(self, mesh: pv.DataSet) -> None:
         self._simulation_data = mesh
 

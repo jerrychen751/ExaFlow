@@ -10,6 +10,17 @@ from .config.initial_conditions import FieldInitial, StepValue, UniformValue
 from .mpi.subdomain import Subdomain
 
 
+@dataclass(frozen=True, slots=True)
+class TimeLevel:
+    """
+    Where a run had reached when a state was taken. `step_index` counts completed steps from time zero, `current_time` is the simulated time in seconds at that step, and `dt` is the size in seconds the run marches at. Every file a run writes carries these three values, and a restart reads them back and marches on at `dt`. A run that stops on an end time cuts its last step to the time that is left; `dt` still reports the size the run marches at, because a restart that took the cut size would keep it for every later step.
+    """
+
+    step_index: int
+    current_time: float
+    dt: float
+
+
 @dataclass(slots=True)
 class FlowState:
     """

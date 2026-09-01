@@ -66,6 +66,7 @@ def test_the_position_starts_at_zero_and_moves_with_every_step(moving_case: Case
 
     assert session.step_index == 1
     assert session.current_time == pytest.approx(session.dt)
+    assert session.level.step_index == 1
 
 
 def test_one_step_at_a_time_gives_the_same_answer_as_one_call(moving_case: Case) -> None:
@@ -209,6 +210,44 @@ def test_an_interval_writes_at_the_steps_it_selects(
 
     totals = sorted(entry.name for entry in tmp_path.iterdir() if entry.name.endswith("_Total.csv"))
     assert totals == ["2_Total.csv", "4_Total.csv", "Final_Total.csv", "Original_Total.csv"]
+
+
+def test_every_field_file_states_the_step_the_time_and_the_step_size(
+    tmp_path: Path,
+    build_case: Callable[..., Case],
+) -> None:
+    case = build_case(
+        (6, 6),
+        time=TimeControl(2, 0.25, 1),
+        initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.5),))),
+        outputs=OutputControl(total_frequency=1),
+    )
+    session = SimulationSession(case, output_directory=str(tmp_path))
+    session.run_until_complete()
+
+    first = (tmp_path / "Original_Total.csv").read_text(encoding="utf-8").splitlines()[0]
+    second = (tmp_path / "2_Total.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert first == f"# step=0 time=0.0 dt={session.dt!r}"
+    assert second == f"# step=2 time={2 * session.dt!r} dt={session.dt!r}"
+
+def test_a_vtk_file_carries_the_time_paraview_reads(
+    tmp_path: Path,
+    build_case: Callable[..., Case],
+) -> None:
+    pyvista = pytest.importorskip("pyvista")
+    case = build_case(
+        (6, 6),
+        time=TimeControl(2, 0.25, 1),
+        initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.5),))),
+        outputs=OutputControl(format=OutputFormat.VTK),
+    )
+    session = SimulationSession(case, output_directory=str(tmp_path))
+    session.run_until_complete()
+
+    field_data = pyvista.read(str(tmp_path / "Final_Total.vtr")).GetFieldData()
+    assert field_data.GetArray("TimeValue").GetTuple1(0) == pytest.approx(session.current_time)
+    assert int(field_data.GetArray("StepIndex").GetTuple1(0)) == 2
+    assert field_data.GetArray("StepSize").GetTuple1(0) == pytest.approx(session.dt)
 
 
 def test_write_initial_false_leaves_out_the_starting_state(

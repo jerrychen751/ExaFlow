@@ -7,7 +7,7 @@ import numpy as np
 
 from ..config.grid import Grid
 from ..config.time_control import OutputControl, OutputFormat
-from ..fields import FlowState
+from ..fields import FlowState, TimeLevel
 from ..mpi.gather import gather_global_array
 from ..mpi.subdomain import Subdomain
 from .csv import format_field_csv, write_text_atomically
@@ -40,12 +40,12 @@ def gather_domain_fields(
 
 class Writer(Protocol):
     """
-    One output format. `frequency` is the interval in steps, or -1 to write only when the session asks directly. `write` is collective: every rank must call it, because a writer that assembles the full domain reduces across ranks.
+    One output format. `frequency` is the interval in steps, or -1 to write only when the session asks directly. `level` states where the run had reached, and the file records it. `write` is collective: every rank must call it, because a writer that assembles the full domain reduces across ranks.
     """
 
     frequency: int
 
-    def write(self, label: str, state: FlowState) -> None: ...
+    def write(self, label: str, state: FlowState, level: TimeLevel) -> None: ...
 
 
 class RankCsvWriter:
@@ -58,11 +58,11 @@ class RankCsvWriter:
         self._directory = directory
         self._subdomain = subdomain
 
-    def write(self, label: str, state: FlowState) -> None:
+    def write(self, label: str, state: FlowState, level: TimeLevel) -> None:
         interior = self._subdomain.interior
         velocity = np.stack([state.velocity[axis][interior] for axis in range(state.dimension)])  # dimension x (*shape,) -> (dimension, *shape)
         origin = tuple(start for start, _ in self._subdomain.bounds)
-        text = format_field_csv(velocity, state.pressure[interior], origin)
+        text = format_field_csv(velocity, state.pressure[interior], origin, level)
         write_text_atomically(os.path.join(self._directory, f"{label}_{self._subdomain.rank}.csv"), text)
 
 
@@ -77,18 +77,20 @@ class TotalCsvWriter:
         self._subdomain = subdomain
         self._comm = comm
 
-    def write(self, label: str, state: FlowState) -> None:
+    def write(self, label: str, state: FlowState, level: TimeLevel) -> None:
         assembled = gather_domain_fields(self._subdomain, self._comm, state)
         if assembled is None:
             return
         components, pressure = assembled
-        text = format_field_csv(np.stack(components), pressure, (0,) * self._subdomain.grid.dimension)  # dimension x (*shape,) -> (dimension, *shape)
+        text = format_field_csv(np.stack(components), pressure, (0,) * self._subdomain.grid.dimension, level)  # dimension x (*shape,) -> (dimension, *shape)
         write_text_atomically(os.path.join(self._directory, f"{label}_Total.csv"), text)
 
 
 class VtkWriter:
     """
     One VTK rectilinear grid per label holding the whole domain, named `<label>_Total.vtr`. Rank 0 assembles the blocks and writes; the other ranks take part in the gather and write nothing. Needs pyevtk, which is imported only when a write happens.
+
+    The file states where the run had reached in the field data of the grid. `TimeValue` is the array name ParaView reads as the time of a file. pyevtk writes its own `fieldData` argument inside the `<Piece>` element, where no reader looks for it, so the block is written into the grid element here instead.
     """
 
     def __init__(
@@ -106,7 +108,7 @@ class VtkWriter:
         self._subdomain = subdomain
         self._comm = comm
 
-    def write(self, label: str, state: FlowState) -> None:
+    def write(self, label: str, state: FlowState, level: TimeLevel) -> None:
         try:
             from pyevtk.hl import gridToVTK  # type: ignore[import-untyped]
         except ImportError as error:
@@ -137,6 +139,22 @@ class VtkWriter:
             axes[2],
             pointData={"pressure": pressure, "velocity": tuple(components)},
         )
+
+        arrays = "".join(
+            f'<DataArray type="{kind}" Name="{name}" NumberOfTuples="1" format="ascii">{value!r}</DataArray>\n'
+            for name, kind, value in (
+                ("TimeValue", "Float64", level.current_time),
+                ("StepIndex", "Int64", level.step_index),
+                ("StepSize", "Float64", level.dt),
+            )
+        )
+        written = os.path.join(self._directory, f"{label}_Total.vtr")
+        with open(written, "rb") as handle:
+            raw = handle.read()
+        partial_path = f"{written}.partial"
+        with open(partial_path, "wb") as handle:
+            handle.write(raw.replace(b"<Piece", f"<FieldData>\n{arrays}</FieldData>\n<Piece".encode(), 1))
+        os.replace(partial_path, written)
 
 
 def build_writers(

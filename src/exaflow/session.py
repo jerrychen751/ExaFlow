@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Sequence
 
 from .boundary_application import initialize_boundaries
 from .config.case import Case
-from .fields import FlowState, build_initial_state
+from .fields import FlowState, TimeLevel, build_initial_state
 from .io.writers import Writer, build_writers
 from .mpi.process_grid import ProcessGrid, choose_process_grid
 from .mpi.subdomain import Subdomain
@@ -79,6 +79,14 @@ class SimulationSession:
             local_max = float(self.comm.allreduce(local_max, op=MPI.MAX))
         return compute_time_step(self.case, local_max)
 
+    @property
+    def level(self) -> TimeLevel:
+        """
+        Where this run has reached, as the one record every writer takes.
+        """
+
+        return TimeLevel(self.step_index, self.current_time, self.dt)
+
     def is_complete(self) -> bool:
         """
         Report whether the run has reached its target. `case.time.num_steps` is the step budget of the whole run counted from time zero. An end time stops the run as soon as `current_time` reaches it.
@@ -94,8 +102,9 @@ class SimulationSession:
         Call every writer once with this label, whatever its interval. A frequency of -1 suppresses the interval writes only; the first and last state are written through every writer.
         """
 
+        level = self.level
         for writer in self.writers:
-            writer.write(label, self.state)
+            writer.write(label, self.state, level)
 
     def advance_one_step(self) -> None:
         """
@@ -122,9 +131,10 @@ class SimulationSession:
         self.current_time = next_time
 
         label = str(self.step_index)
+        level = self.level
         for writer in self.writers:
             if self.case.outputs.is_due(writer.frequency, self.step_index):
-                writer.write(label, self.state)
+                writer.write(label, self.state, level)
 
     def run_until_complete(self, *, write_initial: bool = True) -> FlowState:
         """

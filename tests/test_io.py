@@ -8,13 +8,15 @@ import numpy as np
 import pytest
 
 from exaflow.config import Case, OutputControl, OutputFormat
-from exaflow.fields import allocate_state
+from exaflow.fields import TimeLevel, allocate_state
 from exaflow.io.csv import format_field_csv, write_text_atomically
 from exaflow.io.storage import create_run_directory, resolve_output_root
 from exaflow.io.writers import RankCsvWriter, TotalCsvWriter, VtkWriter, build_writers, gather_domain_fields
 from exaflow.mpi.gather import gather_global_array
 from exaflow.mpi.process_grid import ProcessGrid
 from exaflow.mpi.subdomain import Subdomain
+
+LEVEL = TimeLevel(step_index=4, current_time=0.5, dt=0.125)
 
 
 @pytest.mark.parametrize(
@@ -26,8 +28,8 @@ def test_the_header_names_the_axes_then_the_components_then_pressure(
     expected: str,
 ) -> None:
     shape = (2,) * dimension
-    text = format_field_csv(np.zeros((dimension, *shape)), np.zeros(shape), (0,) * dimension)
-    assert text.splitlines()[0] == expected
+    text = format_field_csv(np.zeros((dimension, *shape)), np.zeros(shape), (0,) * dimension, LEVEL)
+    assert text.splitlines()[:2] == ["# step=4 time=0.5 dt=0.125", expected]
 
 
 def test_the_index_columns_carry_global_indices() -> None:
@@ -36,16 +38,16 @@ def test_the_index_columns_carry_global_indices() -> None:
     """
 
     velocity = np.zeros((2, 2, 2))
-    text = format_field_csv(velocity, np.zeros((2, 2)), (4, 7))
-    rows = [row.split(",")[:2] for row in text.splitlines()[1:]]
+    text = format_field_csv(velocity, np.zeros((2, 2)), (4, 7), LEVEL)
+    rows = [row.split(",")[:2] for row in text.splitlines()[2:]]
     assert [[int(x), int(y)] for x, y in rows] == [[4, 7], [4, 8], [5, 7], [5, 8]]
 
 
 def test_rows_run_with_the_last_axis_varying_fastest() -> None:
     velocity = np.zeros((2, 2, 2))
     pressure = np.arange(10.0, 14.0).reshape(2, 2)  # (4,) -> (2, 2)
-    text = format_field_csv(velocity, pressure, (0, 0))
-    assert [row.split(", ")[-1] for row in text.splitlines()[1:]] == ["10.0", "11.0", "12.0", "13.0"]
+    text = format_field_csv(velocity, pressure, (0, 0), LEVEL)
+    assert [row.split(", ")[-1] for row in text.splitlines()[2:]] == ["10.0", "11.0", "12.0", "13.0"]
 
 
 def test_a_value_reads_back_as_the_float_that_produced_it() -> None:
@@ -54,8 +56,8 @@ def test_a_value_reads_back_as_the_float_that_produced_it() -> None:
     """
 
     values = np.array([0.1, 1.0 / 3.0, 1e-17, np.pi])
-    text = format_field_csv(values.reshape(1, 4), values * 2.0, (0,))  # (4,) -> (1, 4), one component of a 1D case
-    read_back = [float(row.split(", ")[1]) for row in text.splitlines()[1:]]
+    text = format_field_csv(values.reshape(1, 4), values * 2.0, (0,), LEVEL)  # (4,) -> (1, 4), one component of a 1D case
+    read_back = [float(row.split(", ")[1]) for row in text.splitlines()[2:]]
     assert read_back == values.tolist()
 
 
@@ -168,11 +170,11 @@ def test_the_rank_writer_names_its_file_after_the_label_and_the_rank(
     subdomain = Subdomain(case.grid, ProcessGrid((2,)), 1)
     state = allocate_state(subdomain, 1)
 
-    RankCsvWriter(str(tmp_path), subdomain).write("Final", state)
+    RankCsvWriter(str(tmp_path), subdomain).write("Final", state, LEVEL)
 
     written = tmp_path / "Final_1.csv"
     assert written.is_file()
-    first_index = written.read_text(encoding="utf-8").splitlines()[1].split(",")[0]
+    first_index = written.read_text(encoding="utf-8").splitlines()[2].split(",")[0]
     assert int(first_index) == subdomain.bounds[0][0]
 
 
@@ -185,10 +187,10 @@ def test_the_total_writer_names_one_file_for_the_whole_domain(
     subdomain = build_subdomain(case.grid)
     state = allocate_state(subdomain, 1)
 
-    TotalCsvWriter(str(tmp_path), subdomain, None).write("Original", state)
+    TotalCsvWriter(str(tmp_path), subdomain, None).write("Original", state, LEVEL)
 
     written = tmp_path / "Original_Total.csv"
-    assert len(written.read_text(encoding="utf-8").splitlines()) == 9
+    assert len(written.read_text(encoding="utf-8").splitlines()) == 10
 
 
 def test_a_csv_run_builds_the_whole_domain_and_per_rank_writers(

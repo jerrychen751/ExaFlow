@@ -55,6 +55,8 @@ Every run writes into its own folder under `~/Documents/ExaFlow`:
 
 `*_Total.csv` holds the full domain, joined on rank 0. `*_<n>.csv` holds the part that rank `n` owned. A folder name is the start time plus a label, so a new run never overwrites an old one.
 
+Every field file states where the run had reached. A CSV starts with a line such as `# step=400 time=0.8 dt=0.002` before the column header, and a `.vtr` carries the same three values as field data, where `TimeValue` is the name ParaView reads as the time of a file. The label of a file is the completed step count, so `400_Total.csv` holds the state after 400 steps.
+
 One run writes one format, so a run folder holds `.csv` files or `.vtr` files and never both. `<Format>` in `<OutputProperties>` selects it, `CSV` or `VTK`, and the shipped template selects CSV:
 
 ```xml

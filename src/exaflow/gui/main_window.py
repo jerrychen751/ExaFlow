@@ -273,10 +273,10 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             if file_path.lower().endswith(".vtr"):
                 self._viewer.load_vtr(file_path)
-                self._append_log(f"[{self._format_time()}] Loaded VTR: {file_path}")
+                self._append_log(f"[{self._format_time()}] Loaded VTR: {file_path}{self._viewer.describe_time_level()}")
             elif file_path.lower().endswith("_total.csv"):
                 self._viewer.load_csv(file_path)
-                self._append_log(f"[{self._format_time()}] Loaded CSV: {file_path}")
+                self._append_log(f"[{self._format_time()}] Loaded CSV: {file_path}{self._viewer.describe_time_level()}")
             else:
                 QtWidgets.QMessageBox.warning(self, "Unsupported file", os.path.basename(file_path))
                 return
