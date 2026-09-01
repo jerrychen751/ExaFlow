@@ -31,13 +31,13 @@ uv run python -c "from mpi4py import MPI; print(MPI.Get_library_version().split(
 ### 2. Run your first simulation
 
 ```bash
-uv run python examples/template_3d_problem.py
+uv run exaflow run --case examples/input_template.xml
 ```
 
-That runs a 50x50x50 domain for 50 steps on one process. It prints the step number and finishes in about one second. To use four processes:
+`exaflow run` is the standard entry point. It reads one case file and runs on the MPI communicator that started it. The shipped template is a 100x100x50 case for 1000 steps, so lower `nt` for a short check. To use four processes:
 
 ```bash
-uv run mpiexec -n 4 python examples/template_3d_problem.py
+uv run mpiexec -n 4 exaflow run --case examples/input_template.xml
 ```
 
 ### 3. Find the output
@@ -46,7 +46,7 @@ Every run writes into its own folder under `~/Documents/ExaFlow`:
 
 ```
 ~/Documents/ExaFlow/
-    2026-08-24_200239_template_3d/
+    2026-08-24_200239_input_template/
         Original_Total.csv
         Final_Total.csv
         Final_0.csv
@@ -58,7 +58,7 @@ Every run writes into its own folder under `~/Documents/ExaFlow`:
 Set `EXAFLOW_OUTPUT_ROOT` to write the run folders somewhere else:
 
 ```bash
-EXAFLOW_OUTPUT_ROOT=/tmp/exaflow-runs uv run python examples/template_3d_problem.py
+EXAFLOW_OUTPUT_ROOT=/tmp/exaflow-runs uv run exaflow run --case examples/input_template.xml
 ```
 
 ### 4. Open the GUI
@@ -85,6 +85,8 @@ src/exaflow/
         time_control.py # TimeControl, OutputControl
         case_xml.py # read_case and write_case: one field map, both directions
     fields.py # FlowState: velocity (dimension, *padded), pressure (*padded)
+    run.py # run_case: the typed application entry point
+    cli.py # parses exaflow run and calls run_case
     mpi/
         process_grid.py # ProcessGrid: rank arrangement and the factorization
         subdomain.py # Subdomain: the block one rank owns and every index rule
@@ -111,13 +113,15 @@ src/exaflow/
         viewer.py # PyVista 3D view
         sim_parameters_dialog.py # edits one Case and returns it
         streaming/ # sends fields from a running job to the viewer
-examples/ # runnable drivers and an input XML
-simulations/ # scaffold script for a new simulation directory
+examples/ # the typed Python API example and the input XML template
+Simulations/ # scaffold script for a new simulation directory
 tests/ # pytest suite, one module per source module, plus conftest.py and the two mpiexec helper scripts
-packaging/ # PyInstaller spec and the desktop app build script
+packaging/ # what PyInstaller reads: the spec, the frozen entry point and the icon
+scripts/ # the commands you run, one file per task
+    update_app.py # builds ExaFlow.app and installs it
 ```
 
-Start with `examples/template_3d_problem.py`. It is the whole driver: build a `Case`, hand it to a `Solver`, call `run`. The loop, the decomposition, the ghost exchange and the output schedule all live in the library.
+Start with `src/exaflow/cli.py`, then follow its `run_case` call into `src/exaflow/run.py` and `Solver`. The CLI parses process input, `run_case` starts one typed case, and `Solver` owns the time loop.
 
 Read `src/exaflow/numerics/README.md` before you touch a stencil. It states the array shapes, the ghost layer index rules, and the rules an operator has to follow.
 
@@ -163,15 +167,31 @@ The domain is split across MPI processes in a process grid. Each process works o
 
 ## Running simulations
 
-### From a Python script
+### From the command line
 
-Build a `Case` and give it to a `Solver`:
+Use one process:
+
+```bash
+uv run exaflow run --case examples/input_template.xml
+```
+
+Use four MPI processes:
+
+```bash
+uv run mpiexec -n 4 exaflow run --case examples/input_template.xml
+```
+
+The CLI reads the XML file, creates one shared run directory, and calls the typed `run_case` core. `--label` replaces the file stem in the run directory name. `--input-xml` remains a compatibility name for `--case`.
+
+### From the Python API
+
+Build a `Case` and give it to `run_case`:
 
 ```python
 from mpi4py import MPI
 from exaflow.config import Case, Fluid, Grid, TimeControl
 from exaflow.io.storage import create_run_directory
-from exaflow.solver import Solver
+from exaflow.run import run_case
 
 comm = MPI.COMM_WORLD
 case = Case(
@@ -179,29 +199,22 @@ case = Case(
     grid=Grid(shape=(50, 50, 50), extent=(1.0, 1.0, 1.0), num_ghost_layers=1),
     time=TimeControl(num_steps=50, cfl=0.25, integration_order=1),
 )
-Solver(case, comm, output_directory=create_run_directory("my_case", comm)).run()
+run_case(case, comm, output_directory=create_run_directory("my_case", comm))
 ```
 
-A `Case` is frozen, so it can be built once and compared. It holds no communicator and no output directory: those belong to a run, and the `Solver` takes them.
+A `Case` is frozen, so it can be built once and compared. It holds no communicator and no output directory. Those values belong to a run, and `run_case` passes them to `Solver`.
 
 `create_run_directory` is a collective call. Rank 0 picks the folder name and broadcasts it, so every rank has to call it. A call on rank 0 alone makes the other ranks wait forever.
-
-### From an XML file
-
-```bash
-uv run mpiexec -n 4 python examples/run_from_xml.py --input-xml examples/input_template.xml
-```
-
-`examples/input_template.xml` is a 100x100x50 domain for 1000 steps, so this run takes many minutes. Lower `nt` in the file for a quick check.
 
 ### As a new simulation directory
 
 ```bash
-uv run python simulations/create_simulation_directories.py simulations/my_run
-uv run mpiexec -n 4 python simulations/my_run/build/run_simulation.py
+uv run python Simulations/create_simulation_directories.py Simulations/my_run
+cd Simulations/my_run
+uv run mpiexec -n 4 exaflow run --case build/in/input.xml
 ```
 
-The scaffold writes `build/in/input.xml` and `build/run_simulation.py`. The run script reads the `input.xml` beside it, so the target directory can sit anywhere.
+The scaffold writes `build/in/input.xml` and a metadata file with the standard command. It creates no Python driver.
 
 ## Developing
 
@@ -235,7 +248,7 @@ uv run pytest tests/test_numerics.py
 
 The first line runs everything. The second leaves out the launcher and the visualization stack, the third keeps only the runs that start `mpiexec`, and the fourth runs one module.
 
-313 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
+317 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
 
 Three markers select a subset:
 
@@ -263,14 +276,16 @@ What the suite holds:
 | `test_pressure_poisson.py` | the operator symmetry, and that the residual divergence falls at second order |
 | `test_io.py`, `test_csv_loader.py` | the CSV format, the atomic write, the run folder, and the loader the GUI reads with |
 | `test_solver.py` | the time step limits, the output schedule, and the rank-count independence of a whole run |
-| `test_cli.py`, `test_streaming.py` | the console entry point, and the length-prefixed stream between a run and the viewer |
+| `test_run.py`, `test_cli.py` | the typed run core and the standard console entry point under one or more MPI processes |
+| `test_simulation_scaffold.py` | the case-only simulation scaffold |
+| `test_streaming.py` | the length-prefixed stream between a run and the viewer |
 
 For a numerical change, also compare output against a run made before it:
 
 ```bash
-EXAFLOW_OUTPUT_ROOT=/tmp/before uv run mpiexec -n 4 python examples/template_3d_problem.py
+EXAFLOW_OUTPUT_ROOT=/tmp/before uv run mpiexec -n 4 exaflow run --case examples/input_template.xml
 # make the change
-EXAFLOW_OUTPUT_ROOT=/tmp/after uv run mpiexec -n 4 python examples/template_3d_problem.py
+EXAFLOW_OUTPUT_ROOT=/tmp/after uv run mpiexec -n 4 exaflow run --case examples/input_template.xml
 cmp /tmp/before/*/Final_Total.csv /tmp/after/*/Final_Total.csv
 ```
 
@@ -278,23 +293,28 @@ A refactor that should not change the numbers gives byte-identical files. Run it
 
 ## The desktop app
 
-`packaging/build_app.py` builds a standalone `ExaFlow.app` that runs without this repository, without Python and without a separate MPI installation:
+`scripts/update_app.py` builds a standalone `ExaFlow.app` that runs without this repository, without Python and without a separate MPI installation, and installs it as `/Applications/ExaFlow.app`:
 
 ```bash
-uv run python packaging/build_app.py
-rm -rf /Applications/ExaFlow.app.new && cp -R dist/ExaFlow.app /Applications/ExaFlow.app.new && rm -rf /Applications/ExaFlow.app && mv /Applications/ExaFlow.app.new /Applications/ExaFlow.app
+uv run python scripts/update_app.py
 ```
 
-The build takes a few minutes and leaves 1.3 GB in `dist/`: the 568 MB `ExaFlow.app` bundle, and the 798 MB `ExaFlow` directory that PyInstaller copied it from. It does five things: it draws `packaging/ExaFlow.icns`, it runs PyInstaller with `packaging/ExaFlow.spec`, it copies Open MPI from `.venv` into `Contents/Resources/mpi`, it removes the local symbols from every `.dylib` and `.so` file in the bundle and signs the bundle again, and it starts the bundled app once to prove that scipy, VTK, PySide6 and MPI still import.
+The build takes about a minute and leaves 1.3 GB in `dist/`: the 568 MB `ExaFlow.app` bundle, and the 798 MB `ExaFlow` directory that PyInstaller copied it from. It does five things: it draws `packaging/ExaFlow.icns`, it runs PyInstaller with `packaging/ExaFlow.spec`, it copies Open MPI from `.venv` into `Contents/Resources/mpi`, it removes the local symbols from every `.dylib` and `.so` file in the bundle and signs the bundle again, and it starts the bundled app twice: once with `--check-bundle` to prove that scipy, VTK, PySide6 and MPI still import, and once with `run --case` to prove that a real case runs.
 
-The build prints that second command when it finishes. It copies to a new name first and removes the old bundle only after that copy succeeds, so a copy that fails leaves the app that works in `/Applications`. A bare `cp -R` writes into the bundle that is already there, so the files of the older build stay and `codesign --verify` then rejects the whole app.
+The install then copies `dist/ExaFlow.app` to `/Applications/ExaFlow.app.new` with `ditto`, and it removes the old bundle only after that copy succeeds, so a copy that fails leaves the app that works in `/Applications`. A bare `cp -R` writes into the bundle that is already there, so the files of the older build stay and `codesign --verify` then rejects the whole app. The script verifies the signature of the installed bundle at the end. It stops before it copies anything when `/Applications/ExaFlow.app` is running, because the install deletes the files that a running app still reads.
+
+| Option | What it does |
+| --- | --- |
+| `--build-only` | Builds into `dist/` and installs nothing. |
+| `--install-only` | Installs the bundle already in `dist/`, which takes seconds. |
+| `--keep-icon` | Reuses `packaging/ExaFlow.icns` instead of drawing it again. |
+| `--quit-app` | Quits the running app, and ends the simulation it runs. |
+| `--destination` | Installs somewhere other than `/Applications/ExaFlow.app`. |
 
 Two details keep MPI working inside the bundle:
 
 - `packaging/entry.py` sets `OPAL_PREFIX`, `PRTE_PREFIX` and `MPI4PY_LIBMPI` to the copied Open MPI before anything imports mpi4py. It also removes `MPI4PY_MPIABI` from the environment, because mpi4py takes the ABI name from that variable and then dlopens no `MPI4PY_LIBMPI` at all.
-- A frozen bundle holds no separate Python interpreter, so each rank re-runs the app itself: `mpirun -np 4 ExaFlow --run-script <script>`. `main_window.py` adds that argument when `sys.frozen` is set.
-
-Pass `--keep-icon` to skip drawing the icon again.
+- A frozen bundle holds no separate Python interpreter, so each rank re-runs the app itself: `mpiexec -n 4 ExaFlow run --case <path>`. `packaging/entry.py` sends those arguments to the same CLI parser.
 
 ## Current status
 
@@ -304,7 +324,7 @@ Pass `--keep-icon` to skip drawing the icon again.
 - MPI domain decomposition and ghost exchange, verified rank-count independent
 - All boundary condition types (except time-dependent)
 - CSV and VTK output
-- 313 tests, and `uv run mypy src tests` reporting no issues
+- 317 tests, and `uv run mypy src tests` reporting no issues
 
 **In progress:**
 - Pressure projection (Poisson solver for incompressibility)
