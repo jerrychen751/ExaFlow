@@ -72,6 +72,7 @@ def parse_case(root: ElementTree.Element) -> Case:
         format=parse_output_format(_read_text(output_node, "Format")),
         total_frequency=_read_int(output_node, "WriteTotalFrequency"),
         partial_frequency=_read_int(output_node, "WritePartialFrequency"),
+        checkpoint_frequency=_read_int(output_node, "WriteCheckpointFrequency"),
     )
 
     return Case(
@@ -150,6 +151,7 @@ def write_case(case: Case) -> str:
     _put(output_node, "Format", case.outputs.format.value)
     _put(output_node, "WriteTotalFrequency", case.outputs.total_frequency)
     _put(output_node, "WritePartialFrequency", case.outputs.partial_frequency)
+    _put(output_node, "WriteCheckpointFrequency", case.outputs.checkpoint_frequency)
 
     raw = ElementTree.tostring(root, encoding="utf-8")
     return minidom.parseString(raw).toprettyxml(indent="  ")

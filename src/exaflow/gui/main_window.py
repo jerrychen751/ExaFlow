@@ -117,6 +117,8 @@ class MainWindow(QtWidgets.QMainWindow):
         run_controls_row = QtWidgets.QHBoxLayout()
         self._run_button = QtWidgets.QPushButton("Run", controls)
         self._run_button.clicked.connect(self._run_simulation)
+        self._resume_button = QtWidgets.QPushButton("Resume…", controls)
+        self._resume_button.clicked.connect(self._resume_simulation)
         self._stop_button = QtWidgets.QPushButton("Stop", controls)
         self._stop_button.clicked.connect(self._stop_simulation)
         self._open_file_button = QtWidgets.QPushButton("Open File…", controls)
@@ -130,6 +132,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._settings_button.setIcon(settings_icon)
         self._settings_button.clicked.connect(self._open_settings_dialog)
         run_controls_row.addWidget(self._run_button)
+        run_controls_row.addWidget(self._resume_button)
         run_controls_row.addWidget(self._stop_button)
         run_controls_row.addWidget(self._open_file_button)
         run_controls_row.addWidget(self._help_button)
@@ -226,12 +229,37 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._log_output.clear()
         self._run_button.setEnabled(False)
+        self._resume_button.setEnabled(False)
         display_command = self._runner.start(
-            str(case_path),
             mpi_processes,
             self._output_directory_input.text().strip() or resolve_output_root(),
+            case_path=str(case_path),
         )
         self._append_log(f"[{self._format_time()}] Case saved to {case_path}")
+        self._append_log(f"[{self._format_time()}] Starting: {display_command}")
+
+    def _resume_simulation(self) -> None:
+        """
+        Continue the run one checkpoint holds. The case comes from the checkpoint itself, not from the form, because the fields it stores belong to the case that produced them.
+        """
+
+        checkpoint_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Resume from a checkpoint",
+            self._output_directory_input.text().strip() or os.getcwd(),
+            "ExaFlow checkpoint (Checkpoint_*.npz);;All files (*)",
+        )
+        if not checkpoint_path:
+            return
+
+        self._log_output.clear()
+        self._run_button.setEnabled(False)
+        self._resume_button.setEnabled(False)
+        display_command = self._runner.start(
+            int(self._mpi_processes_input.value()),
+            self._output_directory_input.text().strip() or resolve_output_root(),
+            checkpoint_path=checkpoint_path,
+        )
         self._append_log(f"[{self._format_time()}] Starting: {display_command}")
 
     def _stop_simulation(self) -> None:
@@ -243,11 +271,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _handle_process_finished(self, code: int, status: str) -> None:
         self._clear_run_case_directory()
         self._run_button.setEnabled(True)
+        self._resume_button.setEnabled(True)
         self._append_log(f"[{self._format_time()}] Finished with code {code} ({status})")
 
     def _handle_process_failed(self, message: str) -> None:
         self._clear_run_case_directory()
         self._run_button.setEnabled(True)
+        self._resume_button.setEnabled(True)
         QtWidgets.QMessageBox.critical(self, "Failed to start", message)
 
     # ------------------------- File operations -------------------------

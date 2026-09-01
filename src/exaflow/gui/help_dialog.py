@@ -83,7 +83,7 @@ class HelpDialog(QtWidgets.QDialog):
         <li>Open "Simulation Params..." and review the case</li>
         <li>Set the number of MPI processes (default: 4)</li>
         <li>Choose the output root</li>
-        <li>Click "Run" to start <code>exaflow run --case</code> through MPI</li>
+        <li>Click "Run" to start <code>exaflow run</code> through MPI, or "Resume..." to continue from a checkpoint</li>
         <li>The viewer loads new result files from the output root</li>
         </ol>
         """)
@@ -118,6 +118,7 @@ class HelpDialog(QtWidgets.QDialog):
         <h3>Run Controls:</h3>
         <ul>
         <li><b>Run:</b> Start the simulation with current settings</li>
+        <li><b>Resume...:</b> Continue the run a checkpoint holds; the case comes from the checkpoint, not from the form</li>
         <li><b>Stop:</b> Terminate the running simulation</li>
         <li><b>Open File...:</b> Manually select a result file to load</li>
         <li><b>?:</b> Show this help dialog</li>

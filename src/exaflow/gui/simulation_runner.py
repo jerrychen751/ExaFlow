@@ -13,7 +13,7 @@ from PySide6 import QtCore
 
 class SimulationRunner(QtCore.QObject):
     """
-    Owns the child process for one run. `start` executes `exaflow run --case` under MPI and returns the command for the log.
+    Owns the child process for one run. `start` executes `exaflow run` under MPI and returns the command for the log.
 
     Output arrives on `output`. `failed` reports a start fault. `finished` fires once at the end.
     """
@@ -35,15 +35,20 @@ class SimulationRunner(QtCore.QObject):
 
     def start(
         self,
-        case_path: str,
         num_procs: int,
         output_root: str,
+        *,
+        case_path: str | None = None,
+        checkpoint_path: str | None = None,
     ) -> str:
         """
-        Start the case under `mpiexec` with `num_procs` ranks. Return the command as one line of text.
+        Start a run under `mpiexec` with `num_procs` ranks, and return the command as one line of text. Give `case_path` to start a case from its input XML, `checkpoint_path` to continue the run a checkpoint holds, or both to continue that run under a replacement case. One of the two is required.
 
         A source run uses `python -m exaflow.cli`. A frozen run uses the bundle executable. Both processes receive `EXAFLOW_OUTPUT_ROOT`.
         """
+
+        if case_path is None and checkpoint_path is None:
+            raise ValueError("A run needs a case path, a checkpoint path, or both.")
 
         # The executable is the absolute path to the binary running the current process
         # For Desktop app this is the ExaFlow application (sys.frozen is True), for MPI CLI this is Python executable
@@ -52,14 +57,11 @@ class SimulationRunner(QtCore.QObject):
             if getattr(sys, "frozen", False)
             else [sys.executable, "-m", "exaflow.cli"]
         )
-        launch_arguments = [
-            "-n",
-            str(num_procs),
-            *entry_arguments,
-            "run",
-            "--case",
-            os.path.abspath(case_path),
-        ]
+        launch_arguments = ["-n", str(num_procs), *entry_arguments, "run"]
+        if checkpoint_path is not None:
+            launch_arguments += ["--resume", os.path.abspath(checkpoint_path)]
+        if case_path is not None:
+            launch_arguments += ["--case", os.path.abspath(case_path)]
         display_command = shlex.join(["mpiexec", *launch_arguments])
 
         environment = QtCore.QProcessEnvironment.systemEnvironment()

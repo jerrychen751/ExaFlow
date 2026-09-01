@@ -117,10 +117,17 @@ def test_the_status_beside_the_button_names_the_case(window: main_window_module.
 
 class _FakeRunner:
     def __init__(self) -> None:
-        self.arguments: tuple[str, int, str] | None = None
+        self.arguments: tuple[str | None, str | None, int, str] | None = None
 
-    def start(self, case_path: str, num_procs: int, output_root: str) -> str:
-        self.arguments = (case_path, num_procs, output_root)
+    def start(
+        self,
+        num_procs: int,
+        output_root: str,
+        *,
+        case_path: str | None = None,
+        checkpoint_path: str | None = None,
+    ) -> str:
+        self.arguments = (case_path, checkpoint_path, num_procs, output_root)
         return "mpiexec -n 4 exaflow run --case case.xml"
 
     def is_running(self) -> bool:
@@ -142,7 +149,9 @@ def test_run_writes_the_case_and_keeps_it_until_process_exit(
     window._run_simulation()
 
     assert runner.arguments is not None
-    case_path, num_procs, output_root = runner.arguments
+    case_path, checkpoint_path, num_procs, output_root = runner.arguments
+    assert case_path is not None
+    assert checkpoint_path is None
     assert num_procs == 3
     assert output_root == str(tmp_path / "runs")
     assert Path(case_path).is_file()

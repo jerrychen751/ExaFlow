@@ -271,6 +271,9 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._int_fields["partial_frequency"] = self._create_int_input(-1, 1_000_000)
         form.addRow("Partial frequency", self._int_fields["partial_frequency"])
 
+        self._int_fields["checkpoint_frequency"] = self._create_int_input(-1, 1_000_000)
+        form.addRow("Checkpoint frequency", self._int_fields["checkpoint_frequency"])
+
         return widget
 
     def _apply_output_format(self, name: str) -> None:
@@ -355,6 +358,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._combo_fields["output_format"].setCurrentText(case.outputs.format.value)
         self._int_fields["total_frequency"].setValue(case.outputs.total_frequency)
         self._int_fields["partial_frequency"].setValue(case.outputs.partial_frequency)
+        self._int_fields["checkpoint_frequency"].setValue(case.outputs.checkpoint_frequency)
         self._apply_output_format(case.outputs.format.value)
 
         for face in Face:
@@ -419,6 +423,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
                 format=parse_output_format(self._combo_fields["output_format"].currentText().strip()),
                 total_frequency=self._int_fields["total_frequency"].value(),
                 partial_frequency=self._int_fields["partial_frequency"].value(),
+                checkpoint_frequency=self._int_fields["checkpoint_frequency"].value(),
             ),
         )
 

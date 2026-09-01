@@ -117,6 +117,7 @@ def test_an_end_time_stops_the_run_on_the_exact_second(build_case: Callable[...,
     assert session.current_time == timed.time.end_time
     assert session.step_index == 3
 
+
 def test_the_step_budget_caps_a_run_that_would_not_reach_its_end_time(
     build_case: Callable[..., Case],
 ) -> None:
@@ -131,6 +132,7 @@ def test_the_step_budget_caps_a_run_that_would_not_reach_its_end_time(
 
     assert session.step_index == 3
     assert session.current_time < 1.0e6
+
 
 def test_an_adaptive_run_chooses_the_step_size_again_before_every_step(
     build_case: Callable[..., Case],
@@ -160,6 +162,13 @@ def test_an_adaptive_run_chooses_the_step_size_again_before_every_step(
     calls.clear()
     SimulationSession(replace(case, time=TimeControl(3, 0.25, 1))).run_until_complete()
     assert len(calls) == 1
+
+
+def test_a_checkpoint_interval_with_nowhere_to_write_is_refused(build_case: Callable[..., Case]) -> None:
+    case = build_case((6, 6), outputs=OutputControl(checkpoint_frequency=2))
+
+    with pytest.raises(ValueError, match="needs an output directory"):
+        SimulationSession(case)
 
 
 def test_writers_produce_the_expected_files(tmp_path: Path, moving_case: Case) -> None:
@@ -229,6 +238,7 @@ def test_every_field_file_states_the_step_the_time_and_the_step_size(
     second = (tmp_path / "2_Total.csv").read_text(encoding="utf-8").splitlines()[0]
     assert first == f"# step=0 time=0.0 dt={session.dt!r}"
     assert second == f"# step=2 time={2 * session.dt!r} dt={session.dt!r}"
+
 
 def test_a_vtk_file_carries_the_time_paraview_reads(
     tmp_path: Path,
@@ -324,3 +334,23 @@ def test_the_answer_does_not_depend_on_the_rank_count(
     written = (tmp_path / "Final_Total.csv").read_bytes()
     assert written == serial_reference_output, f"1 rank and {num_procs} ranks disagree"
 
+
+@pytest.mark.mpi
+@pytest.mark.slow
+@pytest.mark.parametrize("write_procs,finish_procs", [(2, 1), (1, 4)])
+def test_a_run_stopped_and_continued_answers_what_the_whole_run_answers(
+    tmp_path: Path,
+    run_under_mpiexec: Callable[..., None],
+    serial_reference_output: bytes,
+    write_procs: int,
+    finish_procs: int,
+) -> None:
+    """
+    The whole point of the checkpoint. Nothing in the file records a decomposition, so the run can also change its rank count where it stops.
+    """
+
+    run_under_mpiexec("_run_case.py", write_procs, str(tmp_path), "half")
+    run_under_mpiexec("_run_case.py", finish_procs, str(tmp_path), "finish")
+
+    written = (tmp_path / "Final_Total.csv").read_bytes()
+    assert written == serial_reference_output, f"a restart at {finish_procs} ranks answers something else"

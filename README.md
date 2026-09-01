@@ -64,6 +64,7 @@ One run writes one format, so a run folder holds `.csv` files or `.vtr` files an
   <Format>CSV</Format>
   <WriteTotalFrequency>100</WriteTotalFrequency>
   <WritePartialFrequency>250</WritePartialFrequency>
+  <WriteCheckpointFrequency>-1</WriteCheckpointFrequency>
 </OutputProperties>
 ```
 
@@ -105,7 +106,7 @@ src/exaflow/
         process_grid.py # ProcessGrid: rank arrangement and the factorization
         subdomain.py # Subdomain: the block one rank owns and every index rule
         ghost_exchange.py # non-blocking exchange of the outermost real layer
-        gather.py # assemble the full domain on rank 0
+        gather.py # assemble the full domain on rank 0, and hand each rank its block back
     numerics/
         operators.py # Operator protocol, build_operators, SpatialOperator
         convection.py # first-order upwind (u dot grad) u
@@ -118,6 +119,7 @@ src/exaflow/
     io/
         writers.py # Writer protocol, TotalCsvWriter, RankCsvWriter, VtkWriter
         csv.py # CSV formatting and the atomic write
+        checkpoint.py # the restart format: write, read and spread one over the ranks
         storage.py # picks the run folder under ~/Documents/ExaFlow
     gui/
         main_window.py # wires the panels, the dialogs and the viewer together
@@ -177,7 +179,7 @@ The domain is split across MPI processes in a process grid. Each process works o
 
 `Subdomain` owns every index rule that follows from that split: the block bounds, the padded shape, the interior slice, the neighbor ranks, and `is_on_face`, which reports whether this rank owns a face of the **global** domain. A boundary condition or a one-sided stencil is correct only where `is_on_face` is true; elsewhere the ghost layer already holds the neighbor's data.
 
-**The answer does not depend on the rank count.** A run at 1, 2, 4 or 8 ranks writes byte-identical output. `tests/test_session.py` checks this, and it is the first property to look at after touching an operator or the exchange.
+**The answer does not depend on the rank count.** A run at 1, 2, 4 or 8 ranks writes byte-identical output, and so does a run stopped at one rank count and continued at another. `tests/test_session.py` checks both, and they are the first properties to look at after touching an operator or the exchange.
 
 ## Running simulations
 
@@ -206,6 +208,30 @@ How far the run marches lives in `<GridProperties>` beside `<nt>` and `<CFL>`:
 
 `<EndTime>` marches to a simulated time in seconds instead of a step count, and `<nt>` is then the cap that stops a run whose step size shrinks faster than the time that is left. The last step is cut to land on the end time itself. `-1` asks for no end time. `<AdaptiveTimeStep>` chooses the step size again from the current state before every step, instead of once from the initial state; it costs one pass over the velocity arrays and one reduction across the ranks per step, which is about 2 percent of an Euler step on the shipped template.
 
+### Stopping and continuing a run
+
+A run saves a restart file when the case asks for one:
+
+```xml
+<WriteCheckpointFrequency>200</WriteCheckpointFrequency>
+```
+
+That writes `Checkpoint_200.npz`, `Checkpoint_400.npz` and so on into the run folder, and one `Checkpoint_Final.npz` beside the last field file. Each one holds the whole domain, the completed step count, the simulated time, the step size and the case that produced them. An interval of -1 writes none at all.
+
+Continue from one with `--resume`:
+
+```bash
+uv run mpiexec -n 8 exaflow run --resume ~/Documents/ExaFlow/2026-08-31_120000_input_template/Checkpoint_400.npz
+```
+
+The command names no case file, because the checkpoint carries its own. Nothing in the file records a decomposition, so a run checkpointed at two ranks continues at one or at eight. `nt` is the step budget of the whole run counted from time zero, so a file at step 400 of 1000 has 600 steps left, and a finished run continues only under a case that raises the budget:
+
+```bash
+uv run mpiexec -n 4 exaflow run --resume Checkpoint_1000.npz --case longer_run.xml
+```
+
+That case replaces the stored one and has to describe the same grid shape. A continued run writes its own folder, carries on the step labels from where it started, and writes the restored state under the label `Resumed` rather than `Original`. The GUI does the same through its **Resume…** button.
+
 ### From the Python API
 
 Build a `Case` and give it to `run_case`:
@@ -227,7 +253,7 @@ run_case(case, comm, output_directory=create_run_directory("my_case", comm))
 
 A `Case` is frozen, so it can be built once and compared. It holds no communicator and no output directory. Those values belong to a run, and `run_case` passes them to `SimulationSession`.
 
-Build the session yourself to stop between steps. It holds `state`, `step_index`, `current_time` and `dt`, `advance_one_step` moves all four, and `is_complete` reports whether the run has reached its target.
+Build the session yourself to stop between steps. It holds `state`, `step_index`, `current_time` and `dt`, `advance_one_step` moves all four, `is_complete` reports whether the run has reached its target, and `save_checkpoint` writes a file another process can continue from.
 
 `create_run_directory` is a collective call. Rank 0 picks the folder name and broadcasts it, so every rank has to call it. A call on rank 0 alone makes the other ranks wait forever.
 
@@ -300,7 +326,8 @@ What the suite holds:
 | `test_ghost_exchange.py` | the serial periodic copy, and the periodic wrap under `mpiexec` |
 | `test_pressure_poisson.py` | the operator symmetry, and that the residual divergence falls at second order |
 | `test_io.py`, `test_csv_loader.py` | the CSV format, the atomic write, the run folder, and the loader the GUI reads with |
-| `test_session.py` | the position of a run, the output schedule, and the rank-count independence of a whole run |
+| `test_session.py` | the position of a run, the end time, the output schedule, and the rank-count independence of a whole run and of a restarted one |
+| `test_checkpoint.py` | the restart format, and that a stopped and continued run reaches the state the whole run reaches |
 | `test_run.py`, `test_cli.py` | the typed run core and the standard console entry point under one or more MPI processes |
 | `test_main_window.py`, `test_simulation_runner.py`, `test_simulation_scaffold.py` | the GUI window, the GUI child command and the case-only simulation scaffold |
 | `test_streaming.py` | the length-prefixed stream between a run and the viewer |

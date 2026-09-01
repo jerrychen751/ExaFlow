@@ -108,6 +108,11 @@ def test_a_run_with_no_end_time_marches_on_the_step_budget_alone() -> None:
     assert control.adaptive_time_step is False
 
 
+def test_output_control_rejects_a_zero_checkpoint_interval() -> None:
+    with pytest.raises(ValueError, match="checkpoint_frequency must be -1 or >= 1"):
+        OutputControl(checkpoint_frequency=0)
+
+
 def test_output_control_rejects_a_zero_interval() -> None:
     with pytest.raises(ValueError, match="must be -1 or >= 1"):
         OutputControl(total_frequency=0)

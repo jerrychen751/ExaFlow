@@ -57,14 +57,17 @@ class OutputControl:
     Which format a run writes, and how often, counted in time steps. One run writes one format, so a run folder holds .vtr files or .csv files and never both.
 
     `total_frequency` is the interval of the file that holds the whole domain, and `partial_frequency` the interval of the per-rank files. Only CSV has a per-rank file, so VTK rejects a `partial_frequency` other than -1 rather than accept a value it would drop. A frequency of -1 asks for no writes during the march; it does not turn the format off, because the session writes the first and last state through every writer whatever its interval. Zero and negative values other than -1 are rejected, because a modulo against them cannot decide a step.
+
+    `checkpoint_frequency` is the interval of the restart file, which belongs to no format and is written beside the field files of either. A frequency of -1 asks for no checkpoint at all, not even a final one.
     """
 
     format: OutputFormat = OutputFormat.CSV
     total_frequency: int = -1
     partial_frequency: int = -1
+    checkpoint_frequency: int = -1
 
     def __post_init__(self) -> None:
-        for name in ("total_frequency", "partial_frequency"):
+        for name in ("total_frequency", "partial_frequency", "checkpoint_frequency"):
             frequency = getattr(self, name)
             if frequency != -1 and frequency < 1:
                 raise ValueError(f"{name} must be -1 or >= 1, got {frequency}.")

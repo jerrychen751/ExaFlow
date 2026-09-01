@@ -182,5 +182,6 @@
       <Format>CSV</Format>
       <WriteTotalFrequency>100</WriteTotalFrequency>
       <WritePartialFrequency>250</WritePartialFrequency>
+      <WriteCheckpointFrequency>-1</WriteCheckpointFrequency>
     </OutputProperties>
   </Simulation>

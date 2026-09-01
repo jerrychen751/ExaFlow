@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Sequence
+
+import numpy as np
 
 from .boundary_application import initialize_boundaries
 from .config.case import Case
+from .config.case_xml import write_case
 from .fields import FlowState, TimeLevel, build_initial_state
-from .io.writers import Writer, build_writers
+from .io.checkpoint import Checkpoint, scatter_checkpoint, write_checkpoint
+from .io.writers import Writer, build_writers, gather_domain_fields
 from .mpi.process_grid import ProcessGrid, choose_process_grid
 from .mpi.subdomain import Subdomain
 from .numerics.operators import SpatialOperator
@@ -31,6 +36,7 @@ class SimulationSession:
         *,
         output_directory: str | None = None,
         writers: Sequence[Writer] | None = None,
+        checkpoint_path: str | None = None,
     ) -> None:
         self.case = case
         self.comm = comm
@@ -39,6 +45,7 @@ class SimulationSession:
 
         self.process_grid = ProcessGrid(choose_process_grid(num_procs, case.grid.shape, case.grid.num_ghost_layers))
         self.subdomain = Subdomain(case.grid, self.process_grid, self.rank)
+        self.output_directory = output_directory
 
         if writers is not None:
             self.writers: tuple[Writer, ...] = tuple(writers)
@@ -46,11 +53,21 @@ class SimulationSession:
             self.writers = build_writers(output_directory, case.grid, self.subdomain, comm, case.outputs)
         else:
             self.writers = ()
+        if case.outputs.checkpoint_frequency != -1 and output_directory is None:
+            raise ValueError("A case with a checkpoint interval needs an output directory to write into.")
+        self._case_xml = write_case(case) if output_directory is not None else ""
 
-        self.state = self.build_initial_state()
-        self.step_index = 0
-        self.current_time = 0.0
-        self.dt = self.choose_time_step()
+        if checkpoint_path is None:
+            self.state = self.build_initial_state()
+            self.step_index = 0
+            self.current_time = 0.0
+            self.dt = self.choose_time_step()
+        else:
+            self.state, level = scatter_checkpoint(checkpoint_path, case, self.subdomain, comm)
+            initialize_boundaries(self.state, case, self.subdomain)
+            self.step_index = level.step_index
+            self.current_time = level.current_time
+            self.dt = level.dt
 
         self._integrator = TimeIntegrator(
             SpatialOperator(case, self.subdomain, comm),
@@ -82,14 +99,14 @@ class SimulationSession:
     @property
     def level(self) -> TimeLevel:
         """
-        Where this run has reached, as the one record every writer takes.
+        Where this run has reached, as the one record a writer and a checkpoint both take.
         """
 
         return TimeLevel(self.step_index, self.current_time, self.dt)
 
     def is_complete(self) -> bool:
         """
-        Report whether the run has reached its target. `case.time.num_steps` is the step budget of the whole run counted from time zero. An end time stops the run as soon as `current_time` reaches it.
+        Report whether the run has reached its target. `case.time.num_steps` is the step budget of the whole run counted from time zero, so a session restored at step 400 of 1000 reports False until it has taken 600 more steps. An end time stops the run as soon as `current_time` reaches it.
         """
 
         if self.step_index >= self.case.time.num_steps:
@@ -106,9 +123,26 @@ class SimulationSession:
         for writer in self.writers:
             writer.write(label, self.state, level)
 
+    def save_checkpoint(self, label: str) -> None:
+        """
+        Write `Checkpoint_<label>.npz` into the output directory of this run. Rank 0 writes the file; the other ranks take part in the gather and write nothing.
+
+        This is a collective call: every rank must reach it. Raises ValueError when the session was given no output directory. The case text goes into the file as `__init__` rendered it, because a render here would raise on rank 0 alone, mid-march, and leave the other ranks at the next ghost exchange.
+        """
+
+        if self.output_directory is None:
+            raise ValueError("This session has no output directory, so it cannot write a checkpoint.")
+        assembled = gather_domain_fields(self.subdomain, self.comm, self.state)
+        if assembled is None:
+            return
+        components, pressure = assembled
+        velocity = np.stack(components)  # dimension x (*shape,) -> (dimension, *shape)
+        checkpoint = Checkpoint(velocity, pressure, self.level, self._case_xml)
+        write_checkpoint(os.path.join(self.output_directory, f"Checkpoint_{label}.npz"), checkpoint)
+
     def advance_one_step(self) -> None:
         """
-        Take one step, then write through every writer whose interval names the completed step count, so the label of a file and the step a reader counts are the same number.
+        Take one step, then write what that step selects: every writer whose interval names it, and a checkpoint when the checkpoint interval names it. The label of both is the completed step count, so the file, the level inside it and the step a restart begins at are the same number.
 
         The caller tests `is_complete` first, because a run that has reached its end time would otherwise take a step of zero or less. This replaces `state`, so a reference the caller kept before the call is a stale buffer.
         """
@@ -135,15 +169,19 @@ class SimulationSession:
         for writer in self.writers:
             if self.case.outputs.is_due(writer.frequency, self.step_index):
                 writer.write(label, self.state, level)
+        if self.case.outputs.is_due(self.case.outputs.checkpoint_frequency, self.step_index):
+            self.save_checkpoint(label)
 
     def run_until_complete(self, *, write_initial: bool = True) -> FlowState:
         """
-        Advance until `is_complete` reports True, and return the final state for this rank. Every writer is called once more with the label "Final" at the end. `write_initial` writes the starting state first, under the label "Original".
+        Advance until `is_complete` reports True, and return the final state for this rank. Every writer is called once more with the label "Final" at the end, and a case with a checkpoint interval writes `Checkpoint_Final.npz` there too. `write_initial` writes the starting state first, under the label "Original", or under "Resumed" when the session started from a checkpoint.
         """
 
         if write_initial:
-            self.write("Original")
+            self.write("Original" if self.step_index == 0 else "Resumed")
         while not self.is_complete():
             self.advance_one_step()
         self.write("Final")
+        if self.case.outputs.checkpoint_frequency != -1:
+            self.save_checkpoint("Final")
         return self.state

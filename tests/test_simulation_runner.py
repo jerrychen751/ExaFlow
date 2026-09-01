@@ -37,7 +37,7 @@ def test_source_run_uses_the_standard_cli_command(
     setattr(runner, "_process", process)
     case_path = tmp_path / "case with spaces.xml"
 
-    command = runner.start(str(case_path), 4, str(tmp_path / "runs"))
+    command = runner.start(4, str(tmp_path / "runs"), case_path=str(case_path))
 
     assert process.program == "mpiexec"
     assert process.arguments == [
@@ -66,7 +66,7 @@ def test_frozen_run_restarts_the_bundle_in_cli_mode(
     setattr(runner, "_process", process)
     case_path = tmp_path / "case.xml"
 
-    runner.start(str(case_path), 2, str(tmp_path / "runs"))
+    runner.start(2, str(tmp_path / "runs"), case_path=str(case_path))
 
     assert process.arguments == [
         "-n",

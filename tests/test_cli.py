@@ -8,7 +8,7 @@ from typing import Callable
 
 import pytest
 
-from exaflow.config import Case, InitialConditions, TimeControl, UniformValue
+from exaflow.config import Case, InitialConditions, OutputControl, TimeControl, UniformValue
 from exaflow.config.case_xml import write_case
 
 pytestmark = pytest.mark.slow
@@ -17,15 +17,21 @@ pytestmark = pytest.mark.slow
 @pytest.fixture
 def run_exaflow(tmp_path: Path, build_case: Callable[..., Case]) -> Callable[..., subprocess.CompletedProcess[str]]:
     """
-    Return a launcher that writes a two-step 2D case to `<tmp_path>/<name>.xml`, then runs the console entry point with the output root pointed at `<tmp_path>/runs`. Set `num_procs` above one to place that command under `mpiexec`.
+    Return a launcher that writes a two-step 2D case to `<tmp_path>/<name>.xml`, then runs the console entry point with the output root pointed at `<tmp_path>/runs`. Set `num_procs` above one to place that command under `mpiexec`, and pass `case` to write a case of your own instead.
     """
 
-    def run(*arguments: str, name: str = "tiny", num_procs: int = 1) -> subprocess.CompletedProcess[str]:
-        case = build_case(
-            (6, 5),
-            time=TimeControl(2, 0.25, 1),
-            initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.0),))),
-        )
+    def run(
+        *arguments: str,
+        name: str = "tiny",
+        num_procs: int = 1,
+        case: Case | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        if case is None:
+            case = build_case(
+                (6, 5),
+                time=TimeControl(2, 0.25, 1),
+                initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.0),))),
+            )
         (tmp_path / f"{name}.xml").write_text(write_case(case), encoding="utf-8")
         command = [sys.executable, "-m", "exaflow.cli", *arguments]
         if num_procs > 1:
@@ -97,6 +103,39 @@ def test_mpiexec_runs_the_standard_cli_entry_point(
 
     assert completed.returncode == 0, completed.stderr[-2000:]
     assert len(list((tmp_path / "runs").iterdir())) == 1
+
+
+def test_a_resume_continues_the_run_a_checkpoint_holds(
+    tmp_path: Path,
+    build_case: Callable[..., Case],
+    run_exaflow: Callable[..., subprocess.CompletedProcess[str]],
+) -> None:
+    """
+    The checkpoint carries its own case, so the second command names no XML file at all.
+    """
+
+    case = build_case(
+        (6, 5),
+        time=TimeControl(2, 0.25, 1),
+        initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.0),))),
+        outputs=OutputControl(checkpoint_frequency=1),
+    )
+    first = run_exaflow(
+        "run",
+        "--case",
+        str(tmp_path / "checkpointed.xml"),
+        name="checkpointed",
+        case=case,
+    )
+    assert first.returncode == 0, first.stderr[-2000:]
+    checkpoint = next((tmp_path / "runs").glob("*/Checkpoint_1.npz"))
+
+    completed = run_exaflow("run", "--resume", str(checkpoint))
+
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    continued = Path(completed.stdout.strip().removeprefix("Wrote "))
+    assert (continued / "Resumed_Total.csv").is_file()
+    assert (continued / "Final_Total.csv").is_file()
 
 
 def test_a_command_line_with_no_subcommand_is_refused(
