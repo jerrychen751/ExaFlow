@@ -44,36 +44,16 @@ class PoissonSolver:
         self._lower = tuple(subdomain.shift_interior(axis, -1) for axis in range(case.dimension))
         self._upper = tuple(subdomain.shift_interior(axis, +1) for axis in range(case.dimension))
         self.rho = case.fluid.rho
-        self.ndims = case.dimension
+        self.dimension = case.dimension
         self.interior_shape = subdomain.shape
 
-        # Build sparse laplacian matrix based on self.ndims
+        # Build sparse laplacian matrix based on self.dimension
         laplacian = self._build_laplacian()
 
         # The pure Neumann Laplacian is singular (pressure is only defined up to a constant).
         self._operator = -laplacian
 
         self._p_flat_prev: np.ndarray | None = None
-
-    def compute_divergence(self, state: FlowState) -> np.ndarray:
-        """
-        Compute the divergence of the velocity field using second-order central differencing.
-
-        Uses the stencil (u[i+1] - u[i-1]) / (2 * dx) for each direction.
-        Returns ∇·u*, which is a term in the RHS of the pressure Poisson equation.
-
-        Args:
-            state: The velocity field to measure, ghost layers included. Read, never modified.
-
-        Returns:
-            Array of divergence values at interior grid points, shaped like the block this rank owns. The stencil reaches one point beyond each end, so the value at an outermost real point reads a ghost layer and is only as good as whatever last filled it.
-        """
-
-        divergence = np.zeros(self.interior_shape, dtype=float)
-        for axis in range(self.ndims):
-            field = state.velocity[axis]
-            divergence += (field[self._upper[axis]] - field[self._lower[axis]]) / (2 * self._spacing[axis])
-        return divergence
 
     # The discrete Laplacian operator ∇²p = ∂²p/∂x² + ∂²p/∂y² + ∂²p/∂z²
     # Approximated via central differences: ∂²p/∂x² ≈ (p[i+1] - 2p[i] + p[i-1]) / dx²
@@ -82,11 +62,11 @@ class PoissonSolver:
         Builds the LHS of ∇²p = (ρ/dt) · ∇·u*. We need to convert the PDE operator ∇²p into a matrix equation Lp = RHS where L is a sparse matrix representing the central differences, p is the pressure flattened into a vector, and RHS is (ρ/dt) · ∇·u*. Essentially, we return the matrix that is used in matrix-vector multiplication to apply central differences to each pressure point.
         """
 
-        if self.ndims == 1:
+        if self.dimension == 1:
             (nx,) = self.interior_shape
             return self._build_axis_laplacian(nx, self._spacing[0])
 
-        elif self.ndims == 2:
+        elif self.dimension == 2:
             # 2D pressure grid -> 1D vector via row-major flattening (row by row ordering)
             # 2D Laplacian for a point is ∇²p₁₁ = p₀₁ + p₂₁ + p₁₀ + p₁₂ − 4·p₁₁
                 # 4 Neighbors (l, r, t, b) - 4*self
@@ -103,7 +83,7 @@ class PoissonSolver:
             Iy = sparse.eye(ny, format='csr')
             return sparse.kron(Dxx, Iy, format='csr') + sparse.kron(Ix, Dyy, format='csr')
 
-        elif self.ndims == 3:
+        elif self.dimension == 3:
             # 3D pressure grid -> 1D vector via row-major flattening (x slowest, z fastest)
             # 3D Laplacian for a point is ∇²p = p_l + p_r + p_t + p_b + p_f + p_k − 6·p_c
             #     6 neighbors (left, right, top, bottom, front, back) - 6*self
@@ -127,7 +107,7 @@ class PoissonSolver:
                 sparse.kron(sparse.kron(Ix, Iy, format='csr'), Dzz, format='csr')
             )
 
-        raise ValueError(f"Unsupported number of dimensions: {self.ndims}")
+        raise ValueError(f"Unsupported number of dimensions: {self.dimension}")
 
     def _build_axis_laplacian(self, points: int, spacing: float) -> sparse.csr_matrix:
         """
@@ -143,6 +123,25 @@ class PoissonSolver:
         band[0, 0] = -1.0
         band[points - 1, points - 1] = -1.0
         return band.tocsr() / (spacing ** 2)
+
+    def compute_divergence(self, state: FlowState) -> np.ndarray:
+        """
+        Compute the divergence of the velocity field using second-order central differencing.
+
+        Uses the stencil (u[i+1] - u[i-1]) / (2 * dx) for each direction. Returns ∇·u*, which is a term in the RHS of the pressure Poisson equation.
+
+        Args:
+            state: The velocity field to measure, ghost layers included. Read, never modified.
+
+        Returns:
+            Array of divergence values at interior grid points, shaped like the block this rank owns. The stencil reaches one point beyond each end, so the value at an outermost real point reads a ghost layer and is only as good as whatever last filled it.
+        """
+
+        divergence = np.zeros(self.interior_shape, dtype=float)
+        for axis in range(self.dimension):
+            field = state.velocity[axis]
+            divergence += (field[self._upper[axis]] - field[self._lower[axis]]) / (2 * self._spacing[axis])
+        return divergence
 
     def solve(self, state: FlowState, dt: float) -> np.ndarray:
         """
@@ -162,7 +161,7 @@ class PoissonSolver:
         rhs = (self.rho / dt) * div
 
         # Step 2: Flatten to 1D vector (row-major to match Kronecker product ordering)
-        rhs_flat = rhs.ravel()
+        rhs_flat = rhs.ravel()  # interior_shape -> (N,)
 
         # Step 3: A pure Neumann problem is solvable only where the right-hand side sums to zero, so remove its mean.
         rhs_flat = rhs_flat - rhs_flat.mean()
@@ -195,9 +194,9 @@ class PoissonSolver:
         padded = np.pad(pressure, 1, mode="edge")  # interior_shape -> each axis + 2
 
         # ∂p/∂x_a via central differences over the padded pressure
-        for axis in range(self.ndims):
-            lower = tuple(slice(0, -2) if i == axis else slice(1, -1) for i in range(self.ndims))
-            upper = tuple(slice(2, None) if i == axis else slice(1, -1) for i in range(self.ndims))
+        for axis in range(self.dimension):
+            lower = tuple(slice(0, -2) if i == axis else slice(1, -1) for i in range(self.dimension))
+            upper = tuple(slice(2, None) if i == axis else slice(1, -1) for i in range(self.dimension))
             gradient = (padded[upper] - padded[lower]) / (2 * self._spacing[axis])
             state.velocity[axis][self._interior] -= coeff * gradient
 

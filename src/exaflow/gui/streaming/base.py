@@ -8,7 +8,6 @@ from typing import Optional, Any
 
 
 DEFAULT_STREAMING_PORT = 12345
-DEFAULT_STREAMING_ADDRESS = "localhost"
 
 class TransportProtocol(Enum):
     """

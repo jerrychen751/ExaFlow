@@ -13,20 +13,6 @@ from exaflow.mpi.subdomain import Subdomain
 GRID = Grid((8,), (1.0,), 1)
 
 
-def collect_global_velocity(case: Case, counts: tuple[int, ...]) -> np.ndarray:
-    """
-    The initial x velocity of the whole domain, assembled from the block each rank of a `counts` decomposition fills. Every rank evaluates the contributions over its own block, so this is what the domain would hold at that rank count.
-    """
-
-    process_grid = ProcessGrid(counts)
-    assembled = np.zeros(case.grid.shape)
-    for rank in range(process_grid.size):
-        subdomain = Subdomain(case.grid, process_grid, rank)
-        state = build_initial_state(case, subdomain)
-        assembled[subdomain.global_slices] = state.velocity[0][subdomain.interior]
-    return assembled
-
-
 def test_an_allocated_state_is_zero_and_padded(build_subdomain: Callable[..., Subdomain]) -> None:
     subdomain = build_subdomain(Grid((6, 5), (1.0, 1.0), 2))
     state = allocate_state(subdomain, 2)
@@ -217,6 +203,20 @@ def test_a_step_box_lands_on_the_same_cells_whatever_the_rank_count(
 
     case = build_case((8,), initial=InitialConditions(velocity=((StepValue(5.0, (0.25,), (0.6,)),),)))
     assert collect_global_velocity(case, counts).tolist() == collect_global_velocity(case, (1,)).tolist()
+
+
+def collect_global_velocity(case: Case, counts: tuple[int, ...]) -> np.ndarray:
+    """
+    The initial x velocity of the whole domain, assembled from the block each rank of a `counts` decomposition fills. Every rank evaluates the contributions over its own block, so this is what the domain would hold at that rank count.
+    """
+
+    process_grid = ProcessGrid(counts)
+    assembled = np.zeros(case.grid.shape)
+    for rank in range(process_grid.size):
+        subdomain = Subdomain(case.grid, process_grid, rank)
+        state = build_initial_state(case, subdomain)
+        assembled[subdomain.global_slices] = state.velocity[0][subdomain.interior]
+    return assembled
 
 
 def test_a_step_box_that_misses_a_rank_leaves_it_at_zero(build_case: Callable[..., Case]) -> None:

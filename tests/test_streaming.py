@@ -28,7 +28,7 @@ WAIT_SECONDS = 10.0
 @pytest.fixture(scope="session")
 def qt_application() -> Any:
     """
-    The one QCoreApplication this process may hold. Qt allows a single instance, so every test that needs an event loop shares this fixture.
+    The one QCoreApplication this process may hold. Qt allows a single instance, so every test in this module shares this fixture.
     """
 
     return QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])

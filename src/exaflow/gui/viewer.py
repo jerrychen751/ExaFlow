@@ -15,9 +15,6 @@ import vtk  # type: ignore[import-untyped]
 from .csv_loader import load_total_csv_to_imagedata
 
 
-_VTK_SUPPORTS_BOOL_SCALAR_BAR_TOGGLES = hasattr(vtk.vtkScalarBarActor, "SetDrawTickMarks")
-
-
 class PyVistaViewer(QtWidgets.QFrame):
     render_failed = QtCore.Signal(str)
     """
@@ -197,7 +194,7 @@ class PyVistaViewer(QtWidgets.QFrame):
 
         if self._scalar_bar is not None:
             text_color = (1.0, 1.0, 1.0)
-            if _VTK_SUPPORTS_BOOL_SCALAR_BAR_TOGGLES:
+            if hasattr(vtk.vtkScalarBarActor, "SetDrawTickMarks"):
                 self._scalar_bar.SetDrawTickMarks(True)
                 self._scalar_bar.SetDrawTickLabels(True)
             else:
@@ -220,7 +217,10 @@ class PyVistaViewer(QtWidgets.QFrame):
                 title_text_property.SetJustificationToCentered()
 
         # Update overlays and vectors
-        self._update_overlays_and_vectors()
+        self._update_slice()
+        self._update_outline()
+        self._update_cube_axes()
+        self._update_vectors()
         self._plotter.reset_camera()  # type: ignore[call-arg]
         flat_axis = self._find_flat_axis()
         if flat_axis is not None:
@@ -229,12 +229,6 @@ class PyVistaViewer(QtWidgets.QFrame):
 
 
     # ------------------ Overlays and vectors ------------------
-    def _update_overlays_and_vectors(self) -> None:
-        self._update_slice()
-        self._update_outline()
-        self._update_cube_axes()
-        self._update_vectors()
-
     def _find_flat_axis(self) -> Optional[int]:
         """
         The axis the loaded dataset has no thickness on, or None when all three have a span. A 1D or 2D result is flat, and pyvista cuts nothing out of a flat axis.
@@ -275,7 +269,7 @@ class PyVistaViewer(QtWidgets.QFrame):
         else:
             position = min(max(self._slice_position, low), high)
 
-        origin = list(self._dataset_center() or (0.0, 0.0, 0.0))
+        origin = list(self._read_dataset_center() or (0.0, 0.0, 0.0))
         origin[self._slice_axis] = position
         normal = [0.0, 0.0, 0.0]
         normal[self._slice_axis] = 1.0
@@ -342,8 +336,6 @@ class PyVistaViewer(QtWidgets.QFrame):
             self._cube_axes = None
 
     def _find_vector_array_name(self) -> Optional[str]:
-        if self._simulation_data is None:
-            return None
         point_data = self._simulation_data.point_data
         if point_data is None:
             return None
@@ -518,20 +510,18 @@ class PyVistaViewer(QtWidgets.QFrame):
             self._plotter.render()
 
     # ------------------ Camera presets ------------------
-    def _dataset_center(self) -> Optional[tuple[float, float, float]]:
+    def _read_dataset_center(self) -> Optional[tuple[float, float, float]]:
         if self._simulation_data is None:
             return None
         bounds = self._simulation_data.bounds
         return ((bounds[0]+bounds[1])/2.0, (bounds[2]+bounds[3])/2.0, (bounds[4]+bounds[5])/2.0)
 
-    def _dataset_size(self) -> float:
-        if self._simulation_data is None:
-            return 1.0
+    def _read_dataset_size(self) -> float:
         bounds = self._simulation_data.bounds
         return math.sqrt((bounds[1]-bounds[0])**2 + (bounds[3]-bounds[2])**2 + (bounds[5]-bounds[4])**2)
 
     def _set_camera(self, position: tuple[float, float, float], up_vector: tuple[float, float, float]) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
         self._plotter.camera_position = [position, center, up_vector]
@@ -539,52 +529,52 @@ class PyVistaViewer(QtWidgets.QFrame):
         self._plotter.render()
 
     def view_pos_x(self) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
-        distance = self._dataset_size()
+        distance = self._read_dataset_size()
         self._set_camera((center[0] + distance, center[1], center[2]), (0.0, 0.0, 1.0))
 
     def view_neg_x(self) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
-        distance = self._dataset_size()
+        distance = self._read_dataset_size()
         self._set_camera((center[0] - distance, center[1], center[2]), (0.0, 0.0, 1.0))
 
     def view_pos_y(self) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
-        distance = self._dataset_size()
+        distance = self._read_dataset_size()
         self._set_camera((center[0], center[1] + distance, center[2]), (0.0, 0.0, 1.0))
 
     def view_neg_y(self) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
-        distance = self._dataset_size()
+        distance = self._read_dataset_size()
         self._set_camera((center[0], center[1] - distance, center[2]), (0.0, 0.0, 1.0))
 
     def view_pos_z(self) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
-        distance = self._dataset_size()
+        distance = self._read_dataset_size()
         self._set_camera((center[0], center[1], center[2] + distance), (0.0, 1.0, 0.0))
 
     def view_neg_z(self) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
-        distance = self._dataset_size()
+        distance = self._read_dataset_size()
         self._set_camera((center[0], center[1], center[2] - distance), (0.0, 1.0, 0.0))
 
     def view_iso(self) -> None:
-        center = self._dataset_center()
+        center = self._read_dataset_center()
         if center is None:
             return
-        distance = self._dataset_size()
+        distance = self._read_dataset_size()
         offset = distance / math.sqrt(3.0)
         self._set_camera((center[0] + offset, center[1] + offset, center[2] + offset), (0.0, 0.0, 1.0))
 

@@ -13,7 +13,6 @@ class TCPSocketTransport(StreamingTransport):
         self._address = address
         self._port = port
         self._timeout = timeout
-        self._socket: Optional[socket.socket] = None
 
     @override
     def send(self, data: bytes, metadata: Optional[dict] = None) -> bool:
@@ -32,5 +31,4 @@ class TCPSocketTransport(StreamingTransport):
 
     @override
     def close(self) -> None:
-        if self._socket:
-            self._socket.close()
+        return None

@@ -7,7 +7,6 @@ from typing import Any
 from .base import (
     TransportProtocol, 
     DataFormat, 
-    DEFAULT_STREAMING_ADDRESS, 
     DEFAULT_STREAMING_PORT
 )
 from .transports import TCPSocketTransport
@@ -21,7 +20,7 @@ class StreamingClient:
         self,
         transport: TransportProtocol = TransportProtocol.TCP,
         format: DataFormat = DataFormat.PICKLE_DATASET,
-        address: str = DEFAULT_STREAMING_ADDRESS,
+        address: str = "localhost",
         port: int = DEFAULT_STREAMING_PORT,
         **kwargs
     ):

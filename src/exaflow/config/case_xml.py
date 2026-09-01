@@ -82,6 +82,22 @@ def parse_case(root: ElementTree.Element) -> Case:
     )
 
 
+def _parse_boundaries(node: ElementTree.Element, dimension: int) -> Boundaries:
+    conditions = {}
+    for face in Face:
+        name = face.name.capitalize()
+        kind = parse_boundary_condition(_read_text(node, f"{name}Wall"))
+        velocity: tuple[float, ...] = ()
+        pressure = 0.0
+        if kind == BoundaryCondition.INFLOW:
+            inflow = _find_child(node, f"{name}Inflow")
+            velocity = tuple(_read_float(inflow, key) for key in VELOCITY_NAMES[:dimension])
+        if kind == BoundaryCondition.OUTFLOW:
+            pressure = _read_float(_find_child(node, f"{name}Outflow"), "p")
+        conditions[face.name.lower()] = FaceCondition(kind=kind, velocity=velocity, pressure=pressure)
+    return Boundaries(**conditions)
+
+
 def write_case(case: Case) -> str:
     """
     Render a Case as input XML text. Reading the result back gives a Case whose fields start at the same values, so the reader and this writer stay in step.
@@ -132,22 +148,6 @@ def write_case(case: Case) -> str:
 
     raw = ElementTree.tostring(root, encoding="utf-8")
     return minidom.parseString(raw).toprettyxml(indent="  ")
-
-
-def _parse_boundaries(node: ElementTree.Element, dimension: int) -> Boundaries:
-    conditions = {}
-    for face in Face:
-        name = face.name.capitalize()
-        kind = parse_boundary_condition(_read_text(node, f"{name}Wall"))
-        velocity: tuple[float, ...] = ()
-        pressure = 0.0
-        if kind == BoundaryCondition.INFLOW:
-            inflow = _find_child(node, f"{name}Inflow")
-            velocity = tuple(_read_float(inflow, key) for key in VELOCITY_NAMES[:dimension])
-        if kind == BoundaryCondition.OUTFLOW:
-            pressure = _read_float(_find_child(node, f"{name}Outflow"), "p")
-        conditions[face.name.lower()] = FaceCondition(kind=kind, velocity=velocity, pressure=pressure)
-    return Boundaries(**conditions)
 
 
 def _write_boundaries(boundaries: Boundaries, dimension: int) -> ElementTree.Element:

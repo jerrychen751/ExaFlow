@@ -76,7 +76,7 @@ DEFAULT_INITIAL_CONDITIONS_XML = """<InitialConditions>
 
 def build_default_case() -> Case:
     """
-    The case a dialog opens on when the window has none yet. Every field the frozen types already default is left to them, so this states only what a new user has to be shown a value for.
+    The case a dialog opens on when the caller gives it none. Every field the frozen types already default is left to them, so this states only what a new user has to be shown a value for.
     """
 
     return Case(
@@ -101,7 +101,7 @@ class BoundaryWidgets:
 
 class SimulationParametersDialog(QtWidgets.QDialog):
     """
-    Dialog that edits one Case. It opens on the case it is given, and `case()` returns what the form now describes. The form cannot be accepted into a Case the solver would reject, because accepting builds that Case and reports whatever it raises.
+    Dialog that edits one Case. It opens on the case it is given, and `read_case()` returns what the form now describes. The form cannot be accepted into a Case the solver would reject, because accepting builds that Case and reports whatever it raises.
 
     The dialog describes a 3D case only. It sets no rank count: the arrangement follows the communicator the run is launched with, which the main window sets.
     """
@@ -134,12 +134,19 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         tabs.addTab(self._build_solver_tab(), "Solver")
         tabs.addTab(self._build_boundaries_tab(), "Boundaries")
         tabs.addTab(self._build_output_tab(), "Output & Misc")
-        tabs.addTab(self._build_initial_conditions_tab(), "Initial Conditions")
+
+        initial_conditions_tab = QtWidgets.QWidget()
+        initial_conditions_layout = QtWidgets.QVBoxLayout(initial_conditions_tab)
+        initial_conditions_layout.addWidget(QtWidgets.QLabel("Provide a full <InitialConditions> XML block:"))
+        self._initial_conditions_editor.setPlaceholderText("<InitialConditions>…</InitialConditions>")
+        self._initial_conditions_editor.setTabChangesFocus(True)
+        initial_conditions_layout.addWidget(self._initial_conditions_editor, 1)
+        tabs.addTab(initial_conditions_tab, "Initial Conditions")
 
         button_box = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
         )
-        button_box.accepted.connect(self._on_accept)
+        button_box.accepted.connect(self._handle_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
@@ -212,7 +219,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
             ("back", "Back"),
         ]
 
-        for idx, (key, title) in enumerate(boundary_names):
+        for index, (key, title) in enumerate(boundary_names):
             group = QtWidgets.QGroupBox(f"{title} Boundary")
             group_layout = QtWidgets.QFormLayout(group)
 
@@ -231,8 +238,8 @@ class SimulationParametersDialog(QtWidgets.QDialog):
             outflow_layout.addWidget(outflow_p)
             group_layout.addRow("Outflow", outflow_layout)
 
-            row = idx // 2
-            col = idx % 2
+            row = index // 2
+            col = index % 2
             grid.addWidget(group, row, col)
 
             self._boundary_fields[key] = BoundaryWidgets(
@@ -270,15 +277,6 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         if not writes_per_rank:
             self._int_fields["partial_frequency"].setValue(-1)
 
-    def _build_initial_conditions_tab(self) -> QtWidgets.QWidget:
-        widget = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(widget)
-        layout.addWidget(QtWidgets.QLabel("Provide a full <InitialConditions> XML block:"))
-        self._initial_conditions_editor.setPlaceholderText("<InitialConditions>…</InitialConditions>")
-        self._initial_conditions_editor.setTabChangesFocus(True)
-        layout.addWidget(self._initial_conditions_editor, 1)
-        return widget
-
     # ------------------------ Helpers ------------------------ #
     def _create_double_input(
         self,
@@ -312,9 +310,9 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         widgets: List[QtWidgets.QWidget] = [first, second, third]
-        for idx, widget in enumerate(widgets):
+        for index, widget in enumerate(widgets):
             if labels:
-                layout.addWidget(QtWidgets.QLabel(labels[idx]))
+                layout.addWidget(QtWidgets.QLabel(labels[index]))
             layout.addWidget(widget)
         container = QtWidgets.QWidget()
         container.setLayout(layout)
@@ -362,7 +360,7 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._initial_conditions_editor.setPlainText(write_initial_conditions(case.initial, case.dimension))
 
     # ------------------------ Data extraction ------------------------ #
-    def case(self) -> Case:
+    def read_case(self) -> Case:
         """
         The case the form now describes. Raises ValueError or NotImplementedError when the form describes a case the solver rejects, so the caller reports the fault here instead of writing an XML file that fails at run time.
         """
@@ -415,13 +413,13 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         )
 
     # ------------------------ Validation ------------------------ #
-    def _on_accept(self) -> None:
+    def _handle_accept(self) -> None:
         """
         Accept only a form that builds a Case. Every rule lives in the frozen types, so the dialog states none of them a second time and cannot disagree with the solver about what is valid.
         """
 
         try:
-            self.case()
+            self.read_case()
         except (ValueError, NotImplementedError) as error:
             QtWidgets.QMessageBox.warning(self, "Invalid parameters", str(error))
             return

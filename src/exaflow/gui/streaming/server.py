@@ -14,7 +14,6 @@ class StreamingServer(QtCore.QObject):
     Server for receiving streaming data. Currently supports TCP.
     """
     data_received = QtCore.Signal(pv.DataSet)
-    image_received = QtCore.Signal(bytes)
     
     def __init__(
         self,
@@ -52,7 +51,7 @@ class StreamingServer(QtCore.QObject):
         self._expected_length: Optional[int] = None
         
         # Set up event listener for new connections
-        self._server.newConnection.connect(self._on_new_connection)
+        self._server.newConnection.connect(self._handle_new_connection)
 
         # Start server to listen for connetions on the loopback interface
         self._server.listen(QtNetwork.QHostAddress(QtNetwork.QHostAddress.SpecialAddress.LocalHost), self._port)
@@ -65,7 +64,7 @@ class StreamingServer(QtCore.QObject):
         """Return the TCP port the server accepts connections on, which a caller that asked for port 0 needs in order to reach it."""
         return int(self._server.serverPort())
 
-    def _on_new_connection(self) -> None:
+    def _handle_new_connection(self) -> None:
         """
         Handle new client connection from QTcpServer. Called automatically when newConnection signal is emitted. Accepts the pending connection, closes any existing active connection, and sets up signal handlers for data reception and disconnection.
         """
@@ -76,10 +75,10 @@ class StreamingServer(QtCore.QObject):
         self._active_connection = client_socket
 
         # Set up listeners for signals from QtNetwork.QTcpSocket (client signals)
-        client_socket.readyRead.connect(self._on_ready_read)
-        client_socket.disconnected.connect(self._on_disconnected)
+        client_socket.readyRead.connect(self._handle_ready_read)
+        client_socket.disconnected.connect(self._handle_disconnected)
     
-    def _on_ready_read(self) -> None:
+    def _handle_ready_read(self) -> None:
         if not self._active_connection:
             return
         
@@ -95,7 +94,7 @@ class StreamingServer(QtCore.QObject):
                 self._expected_length = struct.unpack('!Q', length_bytes)[0]
                 self._buffer.remove(0, 8)
             
-            if self._expected_length is None or self._buffer.size() < self._expected_length:
+            if self._buffer.size() < self._expected_length:
                 return
             
             message_bytes = bytes(self._buffer.left(self._expected_length))
@@ -113,7 +112,7 @@ class StreamingServer(QtCore.QObject):
             
             self._expected_length = None
     
-    def _on_disconnected(self) -> None:
+    def _handle_disconnected(self) -> None:
         """
         Handle client disconnection. Called automatically when disconnected signal is emitted. Clears the active connection reference and resets message buffering state.
         """

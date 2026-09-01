@@ -150,6 +150,6 @@ def test_run_writes_the_case_and_keeps_it_until_process_exit(
     assert Path(case_path).is_file()
     assert read_case(case_path) == window._gui_case
 
-    window._on_process_finished(0, "NormalExit")
+    window._handle_process_finished(0, "NormalExit")
 
     assert not Path(case_path).exists()

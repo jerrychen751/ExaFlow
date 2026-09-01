@@ -31,8 +31,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Register handlers so that the main window can react to a child process
         self._runner = SimulationRunner(self)
         self._runner.output.connect(self._append_log)
-        self._runner.finished.connect(self._on_process_finished)
-        self._runner.failed.connect(self._on_process_failed)
+        self._runner.finished.connect(self._handle_process_finished)
+        self._runner.failed.connect(self._handle_process_failed)
 
         # State
         self._gui_case: Case = build_default_case()
@@ -70,7 +70,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._streaming_server = None
             else:
                 # Signal is emitted only after full message is read and successfully unpickled (see server.py)
-                self._streaming_server.data_received.connect(self._on_streaming_dataset)
+                self._streaming_server.data_received.connect(self._handle_streaming_dataset)
 
     # ------------------------- UI -------------------------
     def _build_ui(self) -> None:
@@ -184,16 +184,16 @@ class MainWindow(QtWidgets.QMainWindow):
         toolbar.addStretch(1)
 
         # Camera preset buttons
-        btns = [
+        camera_buttons = [
             ("+X", "view_pos_x"), ("-X", "view_neg_x"),
             ("+Y", "view_pos_y"), ("-Y", "view_neg_y"),
             ("+Z", "view_pos_z"), ("-Z", "view_neg_z"),
             ("ISO", "view_iso"),
         ]
-        for text, meth in btns:
-            b = QtWidgets.QPushButton(text)
-            b.clicked.connect(getattr(self._viewer, meth))
-            toolbar.addWidget(b)
+        for text, method_name in camera_buttons:
+            button = QtWidgets.QPushButton(text)
+            button.clicked.connect(getattr(self._viewer, method_name))
+            toolbar.addWidget(button)
 
         self._slice = SliceController(self._viewer, self)
 
@@ -218,7 +218,7 @@ class MainWindow(QtWidgets.QMainWindow):
         case_path = Path(self._run_case_directory.name) / "gui_case.xml"
         try:
             case_path.write_text(write_case(self._gui_case), encoding="utf-8")
-        except (OSError, ValueError) as exc:
+        except OSError as exc:
             self._clear_run_case_directory()
             QtWidgets.QMessageBox.critical(self, "Failed to write the case", str(exc))
             return
@@ -230,21 +230,21 @@ class MainWindow(QtWidgets.QMainWindow):
             mpi_processes,
             self._output_directory_input.text().strip() or resolve_output_root(),
         )
-        self._append_log(f"[{self._now()}] Case saved to {case_path}")
-        self._append_log(f"[{self._now()}] Starting: {display_command}")
+        self._append_log(f"[{self._format_time()}] Case saved to {case_path}")
+        self._append_log(f"[{self._format_time()}] Starting: {display_command}")
 
     def _stop_simulation(self) -> None:
         if not self._runner.is_running():
             return
-        self._append_log(f"[{self._now()}] Stopping…")
+        self._append_log(f"[{self._format_time()}] Stopping…")
         self._runner.stop()
 
-    def _on_process_finished(self, code: int, status: str) -> None:
+    def _handle_process_finished(self, code: int, status: str) -> None:
         self._clear_run_case_directory()
         self._run_button.setEnabled(True)
-        self._append_log(f"[{self._now()}] Finished with code {code} ({status})")
+        self._append_log(f"[{self._format_time()}] Finished with code {code} ({status})")
 
-    def _on_process_failed(self, message: str) -> None:
+    def _handle_process_failed(self, message: str) -> None:
         self._clear_run_case_directory()
         self._run_button.setEnabled(True)
         QtWidgets.QMessageBox.critical(self, "Failed to start", message)
@@ -272,10 +272,10 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             if file_path.lower().endswith(".vtr"):
                 self._viewer.load_vtr(file_path)
-                self._append_log(f"[{self._now()}] Loaded VTR: {file_path}")
+                self._append_log(f"[{self._format_time()}] Loaded VTR: {file_path}")
             elif file_path.lower().endswith("_total.csv"):
                 self._viewer.load_csv(file_path)
-                self._append_log(f"[{self._now()}] Loaded CSV: {file_path}")
+                self._append_log(f"[{self._format_time()}] Loaded CSV: {file_path}")
             else:
                 QtWidgets.QMessageBox.warning(self, "Unsupported file", os.path.basename(file_path))
                 return
@@ -287,7 +287,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Failed to load", os.path.basename(file_path))
 
     # ------------------------- Network operations -------------------------
-    def _on_streaming_dataset(self, dataset: pv.DataSet) -> None:
+    def _handle_streaming_dataset(self, dataset: pv.DataSet) -> None:
         # A live stream replaces the newest file on disk, so the watcher stops competing with it.
         self._watcher.set_enabled(False)
         try:
@@ -300,13 +300,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self, self._session_settings)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            self._session_settings = dialog.settings()
+            self._session_settings = dialog.read_settings()
             self._refresh_watcher()
 
     def _open_simulation_params_dialog(self) -> None:
         dialog = SimulationParametersDialog(self, self._gui_case)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            self._gui_case = dialog.case()
+            self._gui_case = dialog.read_case()
 
     def _clear_run_case_directory(self) -> None:
         if self._run_case_directory is None:
@@ -334,5 +334,5 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log_output.verticalScrollBar().setValue(self._log_output.verticalScrollBar().maximum())
 
     @staticmethod
-    def _now() -> str:
+    def _format_time() -> str:
         return datetime.now().strftime("%H:%M:%S")

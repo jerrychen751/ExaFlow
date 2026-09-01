@@ -24,19 +24,19 @@ class SliceController(QtCore.QObject):
 
         self._checkbox = QtWidgets.QCheckBox("Slice")
         self._checkbox.setChecked(False)
-        self._checkbox.toggled.connect(self._on_toggled)
+        self._checkbox.toggled.connect(self._handle_toggled)
 
         self._axis_combo = QtWidgets.QComboBox()
         self._axis_combo.addItems(["X", "Y", "Z"])
         self._axis_combo.setCurrentIndex(2)
         self._axis_combo.setEnabled(False)
-        self._axis_combo.currentIndexChanged.connect(self._on_axis_changed)
+        self._axis_combo.currentIndexChanged.connect(self._handle_axis_changed)
 
         self._position_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self._position_slider.setRange(0, SLIDER_STEPS)
         self._position_slider.setValue(SLIDER_STEPS // 2)
         self._position_slider.setEnabled(False)
-        self._position_slider.valueChanged.connect(self._on_position_changed)
+        self._position_slider.valueChanged.connect(self._handle_position_changed)
 
         self._position_label = QtWidgets.QLabel("-")
         self._position_label.setMinimumWidth(90)
@@ -79,19 +79,19 @@ class SliceController(QtCore.QObject):
         self._position_label.setText(f"{position:.3g} {unit}")
         self._viewer.set_slice_position(position)
 
-    def _on_toggled(self, checked: bool) -> None:
+    def _handle_toggled(self, checked: bool) -> None:
         self._axis_combo.setEnabled(checked)
         self._position_slider.setEnabled(checked)
         if checked:
             self._apply_position()
         self._viewer.set_show_slice(checked)
 
-    def _on_axis_changed(self, index: int) -> None:
+    def _handle_axis_changed(self, index: int) -> None:
         self._position_slider.blockSignals(True)
         self._position_slider.setValue(SLIDER_STEPS // 2)
         self._position_slider.blockSignals(False)
         self._viewer.set_slice_axis(index)
         self._apply_position()
 
-    def _on_position_changed(self, _: int) -> None:
+    def _handle_position_changed(self, _: int) -> None:
         self._apply_position()

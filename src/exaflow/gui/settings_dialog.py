@@ -49,7 +49,7 @@ class SettingsDialog(QtWidgets.QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
-    def settings(self) -> SessionSettings:
+    def read_settings(self) -> SessionSettings:
         return SessionSettings(
             autoload_enabled=self._autoload_checkbox.isChecked(),
             autoload_interval_ms=int(self._autoload_interval_spin.value()),

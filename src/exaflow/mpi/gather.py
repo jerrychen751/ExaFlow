@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .subdomain import Subdomain
 
+if TYPE_CHECKING:
+    from mpi4py.MPI import Intracomm
 
-def gather_global_array(subdomain: Subdomain, comm: Any | None, block: np.ndarray) -> np.ndarray | None:
+
+def gather_global_array(subdomain: Subdomain, comm: Intracomm | None, block: np.ndarray) -> np.ndarray | None:
     """
     Assemble the full-domain array from every rank's block on rank 0, and return None on the other ranks. `block` is this rank's interior, with the ghost layers already stripped.
 
@@ -18,7 +21,7 @@ def gather_global_array(subdomain: Subdomain, comm: Any | None, block: np.ndarra
         return np.ascontiguousarray(block)
 
     parts = comm.gather(np.ascontiguousarray(block), root=0)
-    if int(comm.Get_rank()) != 0:
+    if parts is None:
         return None
 
     assembled = np.empty(subdomain.grid.shape, dtype=block.dtype)

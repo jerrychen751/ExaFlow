@@ -40,7 +40,7 @@ def test_diffusion_reproduces_an_analytic_laplacian(
     state, rate = allocate_state(subdomain, dimension), allocate_state(subdomain, dimension)
     coordinate = np.arange(subdomain.padded_shape[0]) * grid.spacing[0]  # (P,)
     shape = (-1, *(1,) * (dimension - 1))
-    state.velocity[0][...] = (coordinate**2).reshape(shape)  # (P,) -> (P, 1, 1) broadcast over the block
+    state.velocity[0][...] = (coordinate**2).reshape(shape)  # (P,) -> (P,), (P, 1) or (P, 1, 1) broadcast over the block
 
     Diffusion(Fluid(1.0, 1.0), grid, subdomain).accumulate(state, rate)
 
@@ -95,7 +95,7 @@ def test_convection_matches_the_upwind_difference_of_a_ramp(
     subdomain = build_subdomain(grid)
     state, rate = allocate_state(subdomain, 3), allocate_state(subdomain, 3)
     step = grid.spacing[0]
-    state.velocity[0][...] = (np.arange(subdomain.padded_shape[0]) * step)[:, None, None]
+    state.velocity[0][...] = (np.arange(subdomain.padded_shape[0]) * step)[:, None, None]  # (P,) -> (P, 1, 1) broadcast over the block
 
     Convection(grid, subdomain).accumulate(state, rate)
 
@@ -113,7 +113,7 @@ def test_convection_leans_into_the_flow_on_each_sign(
     grid = Grid((8, 4, 4), (1.0, 1.0, 1.0), 1)
     subdomain = build_subdomain(grid)
     step = grid.spacing[0]
-    coordinate = (np.arange(subdomain.padded_shape[0]) * step)[:, None, None]
+    coordinate = (np.arange(subdomain.padded_shape[0]) * step)[:, None, None]  # (P,) -> (P, 1, 1) broadcast over the block
 
     for direction in (+1.0, -1.0):
         state, rate = allocate_state(subdomain, 3), allocate_state(subdomain, 3)
@@ -258,7 +258,7 @@ def test_each_scheme_converges_at_its_design_order(
         )
         subdomain = build_subdomain(grid)
         state = allocate_state(subdomain, 3)
-        state.velocity[0][subdomain.interior] = mode[:, None, None]
+        state.velocity[0][subdomain.interior] = mode[:, None, None]  # (points,) -> (points, 1, 1) broadcast over the block
         integrator = TimeIntegrator(SpatialOperator(case, subdomain, None), order, state)
         for _ in range(num_steps):
             state = integrator.advance(state, duration / num_steps)

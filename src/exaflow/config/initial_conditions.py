@@ -36,8 +36,7 @@ class StepValue:
                 raise ValueError(f"step end must be >= start, got start={low}, end={high}.")
 
 
-Contribution: TypeAlias = UniformValue | StepValue
-FieldInitial: TypeAlias = tuple[Contribution, ...]
+FieldInitial: TypeAlias = tuple[UniformValue | StepValue, ...]
 
 
 @dataclass(frozen=True, slots=True)

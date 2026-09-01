@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ..boundary_application import update_boundaries
 from ..config.case import Case
@@ -9,6 +9,9 @@ from ..mpi.ghost_exchange import GhostExchange
 from ..mpi.subdomain import Subdomain
 from .convection import Convection
 from .diffusion import Diffusion
+
+if TYPE_CHECKING:
+    from mpi4py.MPI import Intracomm
 
 
 class Operator(Protocol):
@@ -39,7 +42,7 @@ class SpatialOperator:
     Every stencil here reads the ghost layer of the outermost real cell, so the exchange is completed before any term runs. That costs the overlap of communication with interior work that a peeled bulk-then-shell traversal would allow; the peeled form is worth adding once a profile shows the exchange is the limit.
     """
 
-    def __init__(self, case: Case, subdomain: Subdomain, comm: Any | None) -> None:
+    def __init__(self, case: Case, subdomain: Subdomain, comm: Intracomm | None) -> None:
         self._case = case
         self._subdomain = subdomain
         self._exchange = GhostExchange(subdomain, case.boundaries, comm)

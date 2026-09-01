@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ..config.boundaries import Boundaries, collect_faces
 from ..fields import FlowState
 from .subdomain import Subdomain
+
+if TYPE_CHECKING:
+    from mpi4py.MPI import Intracomm, Request
 
 
 class GhostExchange:
@@ -24,9 +27,9 @@ class GhostExchange:
     Every message carries the tag of the face it leaves from, and a receive asks for the tag of the opposite face. Without the tag, a periodic axis carrying exactly two ranks makes each rank post two sends and two receives to the same peer, and MPI matches them in order, which fills the low ghost plane with the high one. Within one face the arrays are matched by MPI non-overtaking, so they are always walked in the order `state.collect_arrays()` gives them.
     """
 
-    def __init__(self, subdomain: Subdomain, boundaries: Boundaries, comm: Any | None) -> None:
-        self._comm: Any = comm
-        self._requests: list[Any] = []
+    def __init__(self, subdomain: Subdomain, boundaries: Boundaries, comm: Intracomm | None) -> None:
+        self._comm: Intracomm | None = comm
+        self._requests: list[Request] = []
         self._copies: list[tuple[int, tuple[slice, ...], tuple[slice, ...]]] = []
         self._messages: list[tuple[int, int, tuple[slice, ...], tuple[slice, ...], int, int, np.ndarray, np.ndarray]] = []
 
@@ -78,6 +81,8 @@ class GhostExchange:
         arrays = state.collect_arrays()
         for index, destination, opposite in self._copies:
             arrays[index][destination] = arrays[index][opposite]
+        if self._comm is None:
+            return
         for index, neighbor, source, _, send_tag, recv_tag, outgoing, incoming in self._messages:
             np.copyto(outgoing, arrays[index][source])
             self._requests.append(self._comm.Isend(outgoing, dest=neighbor, tag=send_tag))

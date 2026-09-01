@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
@@ -12,10 +12,13 @@ from ..mpi.gather import gather_global_array
 from ..mpi.subdomain import Subdomain
 from .csv import format_field_csv, write_text_atomically
 
+if TYPE_CHECKING:
+    from mpi4py.MPI import Intracomm
+
 
 def gather_domain_fields(
     subdomain: Subdomain,
-    comm: Any | None,
+    comm: Intracomm | None,
     state: FlowState,
 ) -> tuple[list[np.ndarray], np.ndarray] | None:
     """
@@ -57,7 +60,7 @@ class RankCsvWriter:
 
     def write(self, label: str, state: FlowState) -> None:
         interior = self._subdomain.interior
-        velocity = np.stack([state.velocity[axis][interior] for axis in range(state.dimension)])
+        velocity = np.stack([state.velocity[axis][interior] for axis in range(state.dimension)])  # dimension x (*shape,) -> (dimension, *shape)
         origin = tuple(start for start, _ in self._subdomain.bounds)
         text = format_field_csv(velocity, state.pressure[interior], origin)
         write_text_atomically(os.path.join(self._directory, f"{label}_{self._subdomain.rank}.csv"), text)
@@ -68,7 +71,7 @@ class TotalCsvWriter:
     One CSV file per label holding the whole domain, named `<label>_Total.csv`. Rank 0 assembles the blocks and writes; the other ranks take part in the gather and write nothing.
     """
 
-    def __init__(self, directory: str, subdomain: Subdomain, comm: Any | None, *, frequency: int = -1) -> None:
+    def __init__(self, directory: str, subdomain: Subdomain, comm: Intracomm | None, *, frequency: int = -1) -> None:
         self.frequency = frequency
         self._directory = directory
         self._subdomain = subdomain
@@ -79,7 +82,7 @@ class TotalCsvWriter:
         if assembled is None:
             return
         components, pressure = assembled
-        text = format_field_csv(np.stack(components), pressure, (0,) * self._subdomain.grid.dimension)
+        text = format_field_csv(np.stack(components), pressure, (0,) * self._subdomain.grid.dimension)  # dimension x (*shape,) -> (dimension, *shape)
         write_text_atomically(os.path.join(self._directory, f"{label}_Total.csv"), text)
 
 
@@ -93,7 +96,7 @@ class VtkWriter:
         directory: str,
         grid: Grid,
         subdomain: Subdomain,
-        comm: Any | None,
+        comm: Intracomm | None,
         *,
         frequency: int = -1,
     ) -> None:
@@ -140,7 +143,7 @@ def build_writers(
     directory: str,
     grid: Grid,
     subdomain: Subdomain,
-    comm: Any | None,
+    comm: Intracomm | None,
     outputs: OutputControl,
 ) -> tuple[Writer, ...]:
     """

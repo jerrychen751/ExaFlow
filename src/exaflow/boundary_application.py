@@ -19,7 +19,7 @@ def initialize_boundaries(state: FlowState, case: Case, subdomain: Subdomain) ->
         if not subdomain.is_on_face(face):
             continue
         condition = case.boundaries.find_face(face)
-        ghost = _select(face, _ghost_span(face, pad), case.dimension)
+        ghost = _select(face, _build_ghost_span(face, pad), case.dimension)
 
         match condition.kind:
             case BoundaryCondition.NO_SLIP:
@@ -52,7 +52,7 @@ def update_boundaries(state: FlowState, case: Case, subdomain: Subdomain) -> Non
         if not subdomain.is_on_face(face):
             continue
         condition = case.boundaries.find_face(face)
-        ghost = _select(face, _ghost_span(face, pad), case.dimension)
+        ghost = _select(face, _build_ghost_span(face, pad), case.dimension)
         edge_span = slice(pad, pad + 1) if face.is_low else slice(-pad - 1, -pad)
         edge = _select(face, edge_span, case.dimension)
 
@@ -68,7 +68,7 @@ def update_boundaries(state: FlowState, case: Case, subdomain: Subdomain) -> Non
                 raise ValueError(f"Unsupported boundary condition on {face.name}: {condition.kind}.")
 
 
-def _ghost_span(face: Face, pad: int) -> slice:
+def _build_ghost_span(face: Face, pad: int) -> slice:
     return slice(0, pad) if face.is_low else slice(-pad, None)
 
 

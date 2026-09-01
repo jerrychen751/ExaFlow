@@ -40,16 +40,16 @@ def load_total_csv_to_imagedata(file_path: str) -> vtkImageData:
     values = np.array([[float(cell) for cell in row[dimension:]] for row in rows])  # (N, dimension + 1)
     shape = tuple(int(indices[:, axis].max()) + 1 for axis in range(dimension))
     padded = shape + (1,) * (3 - dimension)
-    scatter = tuple(indices[:, axis] for axis in range(dimension))
+    scatter = tuple(indices[:, axis] for axis in range(dimension))  # (N, dimension) -> dimension x (N,)
 
     components = []
     for axis in range(3):
         component = np.zeros(shape, dtype=np.float32)
         if axis < dimension:
-            component[scatter] = values[:, axis]
+            component[scatter] = values[:, axis]  # (N, dimension + 1) -> (N,)
         components.append(component.reshape(padded))  # (*shape,) -> (nx, ny, nz)
     pressure = np.zeros(shape, dtype=np.float32)
-    pressure[scatter] = values[:, dimension]
+    pressure[scatter] = values[:, dimension]  # (N, dimension + 1) -> (N,)
     pressure = pressure.reshape(padded)  # (*shape,) -> (nx, ny, nz)
 
     vtk_image = vtkImageData()
@@ -59,10 +59,10 @@ def load_total_csv_to_imagedata(file_path: str) -> vtkImageData:
     point_data = vtk_image.GetPointData()
     # VTK expects x-fastest ordering; flatten in Fortran order
     for name, component in zip(("u", "v", "w"), components):
-        vtk_component = numpy_to_vtk(component.flatten(order="F"), deep=True)
+        vtk_component = numpy_to_vtk(component.flatten(order="F"), deep=True)  # (nx, ny, nz) -> (nx * ny * nz,)
         vtk_component.SetName(name)
         point_data.AddArray(vtk_component)
-    vtk_pressure = numpy_to_vtk(pressure.flatten(order="F"), deep=True)
+    vtk_pressure = numpy_to_vtk(pressure.flatten(order="F"), deep=True)  # (nx, ny, nz) -> (nx * ny * nz,)
     vtk_pressure.SetName("pressure")
     point_data.AddArray(vtk_pressure)
     point_data.SetActiveScalars("pressure")

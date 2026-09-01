@@ -32,29 +32,6 @@ def build_swirl(subdomain: Subdomain) -> FlowState:
     return state
 
 
-def project_a_shear_flow(points: int) -> tuple[float, float]:
-    """
-    Run one projection over a fixed physical square at `points` points per axis, and return the largest divergence before it and afterwards over the region whose stencil reads corrected values only. The field is fixed in metres, so a finer grid resolves the same flow and the pair of numbers is comparable across calls.
-    """
-
-    case = Case(
-        fluid=Fluid(1.0, 0.1),
-        grid=Grid((points, points), (1.0, 1.0), 1),
-        time=TimeControl(1, 0.25),
-    )
-    subdomain = Subdomain(case.grid, ProcessGrid((1, 1)), 0)
-    solver = PoissonSolver(case, subdomain)
-    coordinate = (np.arange(points + 2) - 1) * case.grid.spacing[0]
-    x, y = np.meshgrid(coordinate, coordinate, indexing="ij")
-    state = allocate_state(subdomain, 2)
-    state.velocity[0][...] = np.sin(2 * np.pi * x) * np.cos(np.pi * y)
-    state.velocity[1][...] = np.cos(np.pi * x) * np.sin(2 * np.pi * y)
-
-    before = float(np.abs(solver.compute_divergence(state)[1:-1, 1:-1]).max())
-    solver.project(state, TIME_STEP)
-    return before, float(np.abs(solver.compute_divergence(state)[1:-1, 1:-1]).max())
-
-
 @pytest.fixture
 def build_poisson_solver(
     build_case: Callable[..., Case],
@@ -261,3 +238,26 @@ def test_the_residual_divergence_falls_at_second_order() -> None:
     assert coarse_after < coarse_before / 10.0
     assert fine_after < fine_before / 100.0
     assert coarse_after / fine_after == pytest.approx(4.0, abs=0.5)
+
+
+def project_a_shear_flow(points: int) -> tuple[float, float]:
+    """
+    Run one projection over a fixed physical square at `points` points per axis, and return the largest divergence before it and afterwards over the region whose stencil reads corrected values only. The field is fixed in metres, so a finer grid resolves the same flow and the pair of numbers is comparable across calls.
+    """
+
+    case = Case(
+        fluid=Fluid(1.0, 0.1),
+        grid=Grid((points, points), (1.0, 1.0), 1),
+        time=TimeControl(1, 0.25),
+    )
+    subdomain = Subdomain(case.grid, ProcessGrid((1, 1)), 0)
+    solver = PoissonSolver(case, subdomain)
+    coordinate = (np.arange(points + 2) - 1) * case.grid.spacing[0]
+    x, y = np.meshgrid(coordinate, coordinate, indexing="ij")
+    state = allocate_state(subdomain, 2)
+    state.velocity[0][...] = np.sin(2 * np.pi * x) * np.cos(np.pi * y)
+    state.velocity[1][...] = np.cos(np.pi * x) * np.sin(2 * np.pi * y)
+
+    before = float(np.abs(solver.compute_divergence(state)[1:-1, 1:-1]).max())
+    solver.project(state, TIME_STEP)
+    return before, float(np.abs(solver.compute_divergence(state)[1:-1, 1:-1]).max())

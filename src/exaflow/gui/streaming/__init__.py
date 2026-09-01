@@ -9,7 +9,6 @@ from .base import (
     TransportProtocol,
     DataFormat,
     DEFAULT_STREAMING_PORT,
-    DEFAULT_STREAMING_ADDRESS,
 )
 
 __all__ = [
@@ -18,5 +17,4 @@ __all__ = [
     "TransportProtocol",
     "DataFormat",
     "DEFAULT_STREAMING_PORT",
-    "DEFAULT_STREAMING_ADDRESS",
 ]

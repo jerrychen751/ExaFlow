@@ -26,9 +26,9 @@ class SimulationRunner(QtCore.QObject):
         super().__init__(parent)
         self._process = QtCore.QProcess(self)
         self._process.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
-        self._process.readyReadStandardOutput.connect(self._on_ready_read)
-        self._process.errorOccurred.connect(self._on_error)
-        self._process.finished.connect(self._on_finished)
+        self._process.readyReadStandardOutput.connect(self._handle_ready_read)
+        self._process.errorOccurred.connect(self._handle_error)
+        self._process.finished.connect(self._handle_finished)
 
     def is_running(self) -> bool:
         return self._process.state() != QtCore.QProcess.ProcessState.NotRunning
@@ -76,14 +76,14 @@ class SimulationRunner(QtCore.QObject):
         if self.is_running():
             self._process.kill()
 
-    def _on_ready_read(self) -> None:
+    def _handle_ready_read(self) -> None:
         data = bytes(self._process.readAllStandardOutput()).decode(errors="ignore")
         if data:
             self.output.emit(data.rstrip("\n"))
 
-    def _on_error(self, error: QtCore.QProcess.ProcessError) -> None:
+    def _handle_error(self, error: QtCore.QProcess.ProcessError) -> None:
         if error == QtCore.QProcess.ProcessError.FailedToStart:
             self.failed.emit(self._process.errorString())
 
-    def _on_finished(self, code: int, status: QtCore.QProcess.ExitStatus) -> None:
+    def _handle_finished(self, code: int, status: QtCore.QProcess.ExitStatus) -> None:
         self.finished.emit(int(code), str(status))
