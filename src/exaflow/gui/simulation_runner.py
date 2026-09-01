@@ -1,10 +1,11 @@
 """
-Launches one simulation under mpirun and reports what it prints.
+Launches one ExaFlow case under MPI and reports what it prints.
 """
 
 from __future__ import annotations
 
 import os
+import shlex
 import sys
 
 from PySide6 import QtCore
@@ -12,9 +13,9 @@ from PySide6 import QtCore
 
 class SimulationRunner(QtCore.QObject):
     """
-    Owns the child process a run happens in. `start` builds the mpirun command line and the environment the child needs, and returns the command as one line for a log. Output arrives on `output` while the run continues, and `finished` fires once at the end.
+    Owns the child process for one run. `start` executes `exaflow run --case` under MPI and returns the command for the log.
 
-    One runner drives one process at a time. A second `start` while a run is active replaces nothing and is the caller's mistake to avoid; ask `is_running` first.
+    Output arrives on `output`. `failed` reports a start fault. `finished` fires once at the end.
     """
 
     output = QtCore.Signal(str)
@@ -26,6 +27,7 @@ class SimulationRunner(QtCore.QObject):
         self._process = QtCore.QProcess(self)
         self._process.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
         self._process.readyReadStandardOutput.connect(self._on_ready_read)
+        self._process.errorOccurred.connect(self._on_error)
         self._process.finished.connect(self._on_finished)
 
     def is_running(self) -> bool:
@@ -33,38 +35,37 @@ class SimulationRunner(QtCore.QObject):
 
     def start(
         self,
-        script_path: str,
-        working_directory: str,
+        case_path: str,
         num_procs: int,
-        script_arguments: list[str],
         output_root: str,
     ) -> str:
         """
-        Start `script_path` under mpirun at `num_procs` ranks and return the command line as one line of text. Emits `failed` when the process does not start within three seconds.
+        Start the case under `mpiexec` with `num_procs` ranks. Return the command as one line of text.
 
-        The child gets the source root of this package on PYTHONPATH, so a script run from any directory imports it, and EXAFLOW_OUTPUT_ROOT so its results land where the window watches.
+        A source run uses `python -m exaflow.cli`. A frozen run uses the bundle executable. Both processes receive `EXAFLOW_OUTPUT_ROOT`.
         """
 
-        # Run the chosen script directly; scripts include a small import bootstrap for relative imports
-        interpreter_arguments = [sys.executable, "--run-script"] if getattr(sys, "frozen", False) else [sys.executable]
-        launch_arguments = ["-np", str(num_procs), *interpreter_arguments, script_path, *script_arguments]
-        display_tail = f"{os.path.basename(script_path)} {' '.join(script_arguments)}".strip()
-        display_command = f"mpirun -np {num_procs} {' '.join(interpreter_arguments)} {display_tail}"
+        # The executable is the absolute path to the binary running the current process
+        # For Desktop app this is the ExaFlow application (sys.frozen is True), for MPI CLI this is Python executable
+        entry_arguments = (
+            [sys.executable]
+            if getattr(sys, "frozen", False)
+            else [sys.executable, "-m", "exaflow.cli"]
+        )
+        launch_arguments = [
+            "-n",
+            str(num_procs),
+            *entry_arguments,
+            "run",
+            "--case",
+            os.path.abspath(case_path),
+        ]
+        display_command = shlex.join(["mpiexec", *launch_arguments])
 
-        self._process.setWorkingDirectory(working_directory)
-        # Ensure child Python can import the top-level package
         environment = QtCore.QProcessEnvironment.systemEnvironment()
-        # Prepend the src/ root to PYTHONPATH
-        package_source_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-        existing_path = environment.value("PYTHONPATH", "")
-        separator = ":" if existing_path else ""
-        environment.insert("PYTHONPATH", f"{package_source_root}{separator}{existing_path}")
         environment.insert("EXAFLOW_OUTPUT_ROOT", output_root)
         self._process.setProcessEnvironment(environment)
-        self._process.start("mpirun", launch_arguments)
-
-        if not self._process.waitForStarted(3000):
-            self.failed.emit(self._process.errorString())
+        self._process.start("mpiexec", launch_arguments)
         return display_command
 
     def stop(self) -> None:
@@ -79,6 +80,10 @@ class SimulationRunner(QtCore.QObject):
         data = bytes(self._process.readAllStandardOutput()).decode(errors="ignore")
         if data:
             self.output.emit(data.rstrip("\n"))
+
+    def _on_error(self, error: QtCore.QProcess.ProcessError) -> None:
+        if error == QtCore.QProcess.ProcessError.FailedToStart:
+            self.failed.emit(self._process.errorString())
 
     def _on_finished(self, code: int, status: QtCore.QProcess.ExitStatus) -> None:
         self.finished.emit(int(code), str(status))

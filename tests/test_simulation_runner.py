@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import pytest
+from PySide6 import QtCore, QtWidgets
+
+from exaflow.gui.simulation_runner import SimulationRunner
+
+pytestmark = pytest.mark.gui
+
+
+class FakeProcess:
+    def __init__(self) -> None:
+        self.environment: QtCore.QProcessEnvironment | None = None
+        self.program = ""
+        self.arguments: list[str] = []
+
+    def setProcessEnvironment(self, environment: QtCore.QProcessEnvironment) -> None:
+        self.environment = environment
+
+    def start(self, program: str, arguments: list[str]) -> None:
+        self.program = program
+        self.arguments = arguments
+
+
+def test_source_run_uses_the_standard_cli_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    qt_application: QtWidgets.QApplication,
+) -> None:
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    runner = SimulationRunner()
+    process = FakeProcess()
+    setattr(runner, "_process", process)
+    case_path = tmp_path / "case with spaces.xml"
+
+    command = runner.start(str(case_path), 4, str(tmp_path / "runs"))
+
+    assert process.program == "mpiexec"
+    assert process.arguments == [
+        "-n",
+        "4",
+        sys.executable,
+        "-m",
+        "exaflow.cli",
+        "run",
+        "--case",
+        os.path.abspath(case_path),
+    ]
+    assert process.environment is not None
+    assert process.environment.value("EXAFLOW_OUTPUT_ROOT") == str(tmp_path / "runs")
+    assert "exaflow.cli run --case" in command
+
+
+def test_frozen_run_restarts_the_bundle_in_cli_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    qt_application: QtWidgets.QApplication,
+) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    runner = SimulationRunner()
+    process = FakeProcess()
+    setattr(runner, "_process", process)
+    case_path = tmp_path / "case.xml"
+
+    runner.start(str(case_path), 2, str(tmp_path / "runs"))
+
+    assert process.arguments == [
+        "-n",
+        "2",
+        sys.executable,
+        "run",
+        "--case",
+        str(case_path),
+    ]

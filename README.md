@@ -67,7 +67,7 @@ EXAFLOW_OUTPUT_ROOT=/tmp/exaflow-runs uv run exaflow run --case examples/input_t
 uv run python run_gui.py
 ```
 
-The window has a control column on the left and a 3D viewer on the right. Choose a script, set the number of MPI processes, and press Run. The viewer loads the newest result file from the output root while the run continues.
+The window has a control column on the left and a 3D viewer on the right. Edit the case, set the number of MPI processes, and press Run. The GUI starts the standard `exaflow run --case` command through `mpiexec`. The viewer loads the newest result file from the output root while the run continues.
 
 The **Slice** row cuts a 3D result on one axis and shows that plane by itself. Pick the axis, move the position slider, and the camera faces the plane and stops rotating. The position label states the unit: metres for a `.vtr` file, and cells for a CSV file, which carries the indices and no physical extent. A 1D or 2D result is already a cross-section, so the viewer shows it flat and the control stays disabled.
 
@@ -248,7 +248,7 @@ uv run pytest tests/test_numerics.py
 
 The first line runs everything. The second leaves out the launcher and the visualization stack, the third keeps only the runs that start `mpiexec`, and the fourth runs one module.
 
-317 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
+321 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
 
 Three markers select a subset:
 
@@ -277,7 +277,7 @@ What the suite holds:
 | `test_io.py`, `test_csv_loader.py` | the CSV format, the atomic write, the run folder, and the loader the GUI reads with |
 | `test_solver.py` | the time step limits, the output schedule, and the rank-count independence of a whole run |
 | `test_run.py`, `test_cli.py` | the typed run core and the standard console entry point under one or more MPI processes |
-| `test_simulation_scaffold.py` | the case-only simulation scaffold |
+| `test_main_window.py`, `test_simulation_runner.py`, `test_simulation_scaffold.py` | the GUI window, the GUI child command and the case-only simulation scaffold |
 | `test_streaming.py` | the length-prefixed stream between a run and the viewer |
 
 For a numerical change, also compare output against a run made before it:
@@ -324,7 +324,7 @@ Two details keep MPI working inside the bundle:
 - MPI domain decomposition and ghost exchange, verified rank-count independent
 - All boundary condition types (except time-dependent)
 - CSV and VTK output
-- 317 tests, and `uv run mypy src tests` reporting no issues
+- 321 tests, and `uv run mypy src tests` reporting no issues
 
 **In progress:**
 - Pressure projection (Poisson solver for incompressibility)

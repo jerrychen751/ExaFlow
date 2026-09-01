@@ -1,40 +1,42 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import traceback
 from datetime import datetime
-from PySide6 import QtCore, QtWidgets
-from typing import Optional
 from pathlib import Path
 
 import pyvista as pv
-from .viewer import PyVistaViewer
-from .help_dialog import HelpDialog
-from .streaming import StreamingServer, DEFAULT_STREAMING_PORT
-from .sim_parameters_dialog import SimulationParametersDialog
-from .settings_dialog import SettingsDialog, SessionSettings
-from .simulation_runner import SimulationRunner
-from .result_watcher import LatestResultWatcher
-from .slice_controller import SliceController
+from PySide6 import QtCore, QtWidgets
+
 from ..config import Case
 from ..config.case_xml import write_case
 from ..io.storage import resolve_output_root
+from .help_dialog import HelpDialog
+from .result_watcher import LatestResultWatcher
+from .settings_dialog import SessionSettings, SettingsDialog
+from .sim_parameters_dialog import SimulationParametersDialog, build_default_case
+from .simulation_runner import SimulationRunner
+from .slice_controller import SliceController
+from .streaming import DEFAULT_STREAMING_PORT, StreamingServer
+from .viewer import PyVistaViewer
 
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("3D Navier–Stokes – GUI")
+        self.setWindowTitle("ExaFlow - Python GUI")
 
         # Process used to run simulations
+        # Register handlers so that the main window can react to a child process
         self._runner = SimulationRunner(self)
         self._runner.output.connect(self._append_log)
         self._runner.finished.connect(self._on_process_finished)
         self._runner.failed.connect(self._on_process_failed)
 
         # State
-        self._gui_case: Optional[Case] = None
-        self._script_allows_gui_parameters: bool = False
+        self._gui_case: Case = build_default_case()
+        self._run_case_directory: tempfile.TemporaryDirectory[str] | None = None # a scratch directory holds XML case
         self._session_settings = SessionSettings()
 
         # UI
@@ -46,7 +48,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_watcher()
 
         # Streaming server for real-time updates
-        self._streaming_server: Optional[StreamingServer] = None
+        self._streaming_server: StreamingServer | None = None
         try:
             self._streaming_server = StreamingServer(
                 port=DEFAULT_STREAMING_PORT,
@@ -82,40 +84,19 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout = QtWidgets.QVBoxLayout(controls)
         form = QtWidgets.QFormLayout()
 
-        # Script selection
-        self._script_path_input = QtWidgets.QLineEdit(controls)
-        self._script_browse_button = QtWidgets.QPushButton("Browse…", controls)
-        self._script_browse_button.clicked.connect(self._browse_script)
-        self._script_path_input.editingFinished.connect(self._on_script_path_changed)
-        script_input_row = QtWidgets.QHBoxLayout()
-        script_input_row.addWidget(self._script_path_input)
-        script_input_row.addWidget(self._script_browse_button)
-        form.addRow("Script (.py)", script_input_row)
-
         self._params_button = QtWidgets.QPushButton("Simulation Params…", controls)
         self._params_button.clicked.connect(self._open_simulation_params_dialog)
-        self._params_status = QtWidgets.QLabel("Unavailable")
+        self._params_status = QtWidgets.QLabel("Configured")
         params_row = QtWidgets.QHBoxLayout()
         params_row.addWidget(self._params_button)
         params_row.addWidget(self._params_status, 1)
-        form.addRow("GUI parameters", params_row)
+        form.addRow("Case", params_row)
 
         # MPI processes
         self._mpi_processes_input = QtWidgets.QSpinBox(controls)
         self._mpi_processes_input.setRange(1, 512)
         self._mpi_processes_input.setValue(4)
         form.addRow("MPI processes", self._mpi_processes_input)
-
-        # Working directory
-        self._working_directory_input = QtWidgets.QLineEdit(controls)
-        default_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir))
-        self._working_directory_input.setText(default_root)
-        self._working_directory_browse_button = QtWidgets.QPushButton("Browse…", controls)
-        self._working_directory_browse_button.clicked.connect(self._browse_working_directory)
-        working_directory_row = QtWidgets.QHBoxLayout()
-        working_directory_row.addWidget(self._working_directory_input)
-        working_directory_row.addWidget(self._working_directory_browse_button)
-        form.addRow("Working dir", working_directory_row)
 
         # Output directory (for watcher)
         self._output_directory_input = QtWidgets.QLineEdit(controls)
@@ -229,51 +210,27 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout.addWidget(splitter)
 
-        # Defaults: try to prefill script path
-        template_script = os.path.abspath(os.path.join(default_root, "examples", "template_3d_problem.py"))
-        if os.path.exists(template_script):
-            self._script_path_input.setText(template_script)
-        self._on_script_path_changed()
-
     # ------------------------- Process handling -------------------------
     def _run_simulation(self) -> None:
-        script_path = self._script_path_input.text().strip()
-        if not script_path:
-            QtWidgets.QMessageBox.warning(self, "Missing script", "Please choose a Python script to run.")
-            return
-        if not os.path.exists(script_path):
-            QtWidgets.QMessageBox.critical(self, "Script not found", script_path)
-            return
-
-        # Re-evaluate script capabilities in case file changed on disk.
-        self._script_allows_gui_parameters = self._script_supports_gui_parameters(script_path)
-        self._update_params_status()
-
-        working_directory = self._working_directory_input.text().strip() or os.path.dirname(script_path)
         mpi_processes = int(self._mpi_processes_input.value())
-
-        extra_script_args: list[str] = []
-        gui_xml_path: Optional[str] = None
-        if self._should_use_gui_parameters():
-            try:
-                gui_xml_path = self._write_gui_parameters_xml(script_path)
-            except OSError as exc:
-                QtWidgets.QMessageBox.critical(self, "Failed to write GUI parameters", str(exc))
-                return
-            extra_script_args.append(f"--input-xml={gui_xml_path}")
-            self._append_log(f"[{self._now()}] GUI parameters saved to {gui_xml_path}")
-        elif self._gui_case and not self._script_allows_gui_parameters:
-            self._append_log("GUI parameters ignored: the script accepts no --input-xml argument.")
+        self._clear_run_case_directory()
+        self._run_case_directory = tempfile.TemporaryDirectory(prefix="exaflow-gui-")
+        case_path = Path(self._run_case_directory.name) / "gui_case.xml"
+        try:
+            case_path.write_text(write_case(self._gui_case), encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            self._clear_run_case_directory()
+            QtWidgets.QMessageBox.critical(self, "Failed to write the case", str(exc))
+            return
 
         self._log_output.clear()
         self._run_button.setEnabled(False)
         display_command = self._runner.start(
-            script_path,
-            working_directory,
+            str(case_path),
             mpi_processes,
-            extra_script_args,
             self._output_directory_input.text().strip() or resolve_output_root(),
         )
+        self._append_log(f"[{self._now()}] Case saved to {case_path}")
         self._append_log(f"[{self._now()}] Starting: {display_command}")
 
     def _stop_simulation(self) -> None:
@@ -281,13 +238,14 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self._append_log(f"[{self._now()}] Stopping…")
         self._runner.stop()
-        self._append_log(f"[{self._now()}] Process stopped.")
 
     def _on_process_finished(self, code: int, status: str) -> None:
+        self._clear_run_case_directory()
         self._run_button.setEnabled(True)
         self._append_log(f"[{self._now()}] Finished with code {code} ({status})")
 
     def _on_process_failed(self, message: str) -> None:
+        self._clear_run_case_directory()
         self._run_button.setEnabled(True)
         QtWidgets.QMessageBox.critical(self, "Failed to start", message)
 
@@ -339,13 +297,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self._append_log(traceback.format_exc())
 
     # ------------------------- Helpers -------------------------
-    def _browse_script(self) -> None:
-        default_path = self._script_path_input.text().strip() or os.path.join(self._working_directory_input.text().strip(), "examples")
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose Python script", default_path, "Python (*.py)")
-        if file_path:
-            self._script_path_input.setText(file_path)
-            self._on_script_path_changed()
-
     def _open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self, self._session_settings)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
@@ -356,62 +307,19 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = SimulationParametersDialog(self, self._gui_case)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._gui_case = dialog.case()
-            self._update_params_status()
 
-    def _on_script_path_changed(self) -> None:
-        self._script_allows_gui_parameters = self._script_supports_gui_parameters(self._script_path_input.text().strip())
-        if not self._script_allows_gui_parameters:
-            self._gui_case = None
-        self._update_params_status()
-
-    def _script_supports_gui_parameters(self, script_path: str) -> bool:
-        """
-        Report whether the chosen script accepts a case file on the command line, which is the contract the GUI needs to pass its parameters through.
-
-        This looks for the argparse flag the script declares, not for what the script means. A script that builds its own Case in code declares no flag and is left alone.
-        """
-
-        if not script_path or not os.path.isfile(script_path):
-            return False
-        try:
-            text = Path(script_path).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            return False
-        return "--input-xml" in text or "--case" in text
-
-    def _update_params_status(self) -> None:
-        if not self._script_allows_gui_parameters:
-            self._params_button.setEnabled(False)
-            self._params_status.setText("Disabled: script takes no --input-xml")
+    def _clear_run_case_directory(self) -> None:
+        if self._run_case_directory is None:
             return
-        self._params_button.setEnabled(True)
-        if self._gui_case is None:
-            self._params_status.setText("Not configured")
-        else:
-            self._params_status.setText("Configured")
-
-    def _should_use_gui_parameters(self) -> bool:
-        return bool(self._script_allows_gui_parameters and self._gui_case)
-
-    def _write_gui_parameters_xml(self, script_path: str) -> str:
-        """
-        Write the dialog's case beside the script as `<stem>_input_parameters.xml` and return that path. The rank count is not written; the arrangement follows the communicator the run is launched with.
-        """
-
-        if self._gui_case is None:
-            raise RuntimeError("GUI parameters not configured")
-        script_file = Path(script_path).resolve()
-        xml_path = script_file.with_name(f"{script_file.stem}_input_parameters.xml")
-        xml_path.write_text(write_case(self._gui_case), encoding="utf-8")
-        return str(xml_path)
-
-    def _browse_working_directory(self) -> None:
-        directory_path = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose working directory", self._working_directory_input.text().strip() or os.getcwd())
-        if directory_path:
-            self._working_directory_input.setText(directory_path)
+        self._run_case_directory.cleanup()
+        self._run_case_directory = None
 
     def _browse_output_directory(self) -> None:
-        directory_path = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose output directory", self._output_directory_input.text().strip() or os.getcwd())
+        directory_path = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            "Choose output directory",
+            self._output_directory_input.text().strip() or os.getcwd(),
+        )
         if directory_path:
             self._output_directory_input.setText(directory_path)
             self._refresh_watcher()

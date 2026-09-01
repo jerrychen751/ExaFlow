@@ -9,7 +9,7 @@ class HelpDialog(QtWidgets.QDialog):
     
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("3D Navier-Stokes GUI - Help")
+        self.setWindowTitle("ExaFlow - Help")
         self.setModal(True)
         self.resize(800, 600)
         
@@ -58,14 +58,14 @@ class HelpDialog(QtWidgets.QDialog):
         text = QtWidgets.QTextEdit()
         text.setReadOnly(True)
         text.setHtml("""
-        <h2>3D Navier-Stokes Solver GUI</h2>
+        <h2>ExaFlow - Python GUI</h2>
         
         <p>This graphical user interface provides an intuitive way to run and visualize 3D Navier-Stokes simulations. 
         The GUI combines simulation execution capabilities with real-time 3D visualization using PyVista.</p>
         
         <h3>Key Features:</h3>
         <ul>
-        <li><b>Simulation Management:</b> Run Python simulation scripts with MPI parallelization</li>
+        <li><b>Simulation Management:</b> Run the configured case through the standard ExaFlow MPI command</li>
         <li><b>Real-time Visualization:</b> View simulation results in interactive 3D plots</li>
         <li><b>Auto-loading:</b> Automatically load the latest simulation results</li>
         <li><b>Multiple File Formats:</b> Support for VTK (.vtr) and CSV files</li>
@@ -80,11 +80,11 @@ class HelpDialog(QtWidgets.QDialog):
         
         <h3>Getting Started:</h3>
         <ol>
-        <li>Select a Python simulation script using the "Browse..." button</li>
+        <li>Open "Simulation Params..." and review the case</li>
         <li>Set the number of MPI processes (default: 4)</li>
-        <li>Choose working and output directories</li>
-        <li>Click "Run" to start the simulation</li>
-        <li>Results will automatically load in the 3D viewer</li>
+        <li>Choose the output root</li>
+        <li>Click "Run" to start <code>exaflow run --case</code> through MPI</li>
+        <li>The viewer loads new result files from the output root</li>
         </ol>
         """)
         
@@ -101,12 +101,11 @@ class HelpDialog(QtWidgets.QDialog):
         text.setHtml("""
         <h2>Simulation Controls</h2>
         
-        <h3>Script Configuration:</h3>
+        <h3>Case Configuration:</h3>
         <ul>
-        <li><b>Script (.py):</b> Path to the Python simulation script to execute</li>
+        <li><b>Simulation Params...:</b> Edit the typed case that the run receives</li>
         <li><b>MPI processes:</b> Number of parallel processes (1-512, default: 4)</li>
-        <li><b>Working dir:</b> Directory where the simulation will run</li>
-        <li><b>Output dir:</b> Directory where simulation results are saved</li>
+        <li><b>Output root:</b> Directory that receives one result directory per run</li>
         </ul>
         
         <h3>Auto-loading:</h3>
@@ -267,10 +266,9 @@ class HelpDialog(QtWidgets.QDialog):
         
         <h4>Simulation Won't Start:</h4>
         <ul>
-        <li><b>Check:</b> Script path is valid and file exists</li>
-        <li><b>Check:</b> Working directory contains required files</li>
+        <li><b>Check:</b> The case values in "Simulation Params..." are valid</li>
         <li><b>Check:</b> MPI is installed and accessible</li>
-        <li><b>Check:</b> Python environment has required dependencies</li>
+        <li><b>Check:</b> The ExaFlow command is available in the active Python environment</li>
         </ul>
         
         <h4>No Results Loading:</h4>
@@ -303,7 +301,7 @@ class HelpDialog(QtWidgets.QDialog):
         <ul>
         <li>Check the run log for detailed error messages</li>
         <li>Verify all file paths and permissions</li>
-        <li>Test with simple simulation scripts first</li>
+        <li>Test the case with <code>mpiexec -n 1 exaflow run --case case.xml</code></li>
         <li>Ensure all dependencies are properly installed</li>
         </ul>
         """)

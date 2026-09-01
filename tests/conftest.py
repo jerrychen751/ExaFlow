@@ -4,17 +4,21 @@ Fixtures every test module shares: the paths this repository ships, the two fact
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import pytest
 
 from exaflow.config import Case, Fluid, Grid, TimeControl
 from exaflow.mpi.process_grid import ProcessGrid
 from exaflow.mpi.subdomain import Subdomain
+
+if TYPE_CHECKING:
+    from PySide6 import QtWidgets
 
 TESTS_DIRECTORY = Path(__file__).resolve().parent
 
@@ -39,6 +43,20 @@ def template_case_path() -> Path:
     """
 
     return TESTS_DIRECTORY.parent / "examples" / "input_template.xml"
+
+
+@pytest.fixture(scope="session")
+def qt_application() -> QtWidgets.QApplication:
+    """
+    The one Qt application object a process is allowed, built for widgets rather than for a message loop alone. Every GUI test module takes this fixture, because a module that builds a bare QCoreApplication first leaves every later widget test with an object it cannot use. Qt reads QT_QPA_PLATFORM when the object is built, so this sets the offscreen platform first and needs no display.
+    """
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6 import QtWidgets
+
+    application = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    assert isinstance(application, QtWidgets.QApplication)
+    return application
 
 
 @pytest.fixture(scope="session")

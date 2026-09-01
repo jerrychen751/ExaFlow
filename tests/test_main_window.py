@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+import os
+from pathlib import Path
+
+import pytest
+from PySide6 import QtCore, QtWidgets
+
+import exaflow.gui.main_window as main_window_module
+from exaflow.config.case_xml import read_case
+
+pytestmark = pytest.mark.gui
+
+
+class _FakeViewer(QtWidgets.QWidget):
+    render_failed = QtCore.Signal(str)
+
+    def set_show_axes(self, _value: bool) -> None:
+        return None
+
+    def set_show_outline(self, _value: bool) -> None:
+        return None
+
+    def set_show_cube_axes(self, _value: bool) -> None:
+        return None
+
+    def set_show_vectors(self, _value: bool) -> None:
+        return None
+
+    def set_vector_stride(self, _value: int) -> None:
+        return None
+
+    def view_pos_x(self) -> None:
+        return None
+
+    def view_neg_x(self) -> None:
+        return None
+
+    def view_pos_y(self) -> None:
+        return None
+
+    def view_neg_y(self) -> None:
+        return None
+
+    def view_pos_z(self) -> None:
+        return None
+
+    def view_neg_z(self) -> None:
+        return None
+
+    def view_iso(self) -> None:
+        return None
+
+
+class _FakeWatcher(QtCore.QObject):
+    found = QtCore.Signal(str)
+
+    def __init__(self, _interval: int, parent: QtCore.QObject | None = None) -> None:
+        super().__init__(parent)
+
+    def set_directory(self, _directory: str) -> None:
+        return None
+
+    def set_interval(self, _interval: int) -> None:
+        return None
+
+    def set_enabled(self, _enabled: bool) -> None:
+        return None
+
+    def poll(self) -> None:
+        return None
+
+    def note_loaded(self, _path: str) -> None:
+        return None
+
+
+class _FakeStreamingServer(QtCore.QObject):
+    data_received = QtCore.Signal(object)
+
+    def __init__(self, port: int, parent: QtCore.QObject | None = None) -> None:
+        super().__init__(parent)
+
+    def is_listening(self) -> bool:
+        return True
+
+
+class _FakeSliceController:
+    def __init__(self, _viewer: _FakeViewer, _parent: QtCore.QObject) -> None:
+        return None
+
+    def build_toolbar(self) -> QtWidgets.QHBoxLayout:
+        return QtWidgets.QHBoxLayout()
+
+    def refresh(self) -> None:
+        return None
+
+
+class _FakeRunner:
+    def __init__(self) -> None:
+        self.arguments: tuple[str, int, str] | None = None
+
+    def start(self, case_path: str, num_procs: int, output_root: str) -> str:
+        self.arguments = (case_path, num_procs, output_root)
+        return "mpiexec -n 4 exaflow run --case case.xml"
+
+    def is_running(self) -> bool:
+        return False
+
+    def stop(self) -> None:
+        return None
+
+
+@pytest.fixture
+def window(
+    monkeypatch: pytest.MonkeyPatch,
+    qt_application: QtWidgets.QApplication,
+) -> Iterator[main_window_module.MainWindow]:
+    monkeypatch.setattr(main_window_module, "PyVistaViewer", _FakeViewer)
+    monkeypatch.setattr(main_window_module, "LatestResultWatcher", _FakeWatcher)
+    monkeypatch.setattr(main_window_module, "StreamingServer", _FakeStreamingServer)
+    monkeypatch.setattr(main_window_module, "SliceController", _FakeSliceController)
+    result = main_window_module.MainWindow()
+    yield result
+    result.close()
+
+
+def test_window_has_no_script_or_working_directory_controls(window: main_window_module.MainWindow) -> None:
+    assert not hasattr(window, "_script_path_input")
+    assert not hasattr(window, "_working_directory_input")
+    assert window._params_button.isEnabled()
+    assert window._params_status.text() == "Configured"
+
+
+def test_run_writes_the_case_and_keeps_it_until_process_exit(
+    tmp_path: Path,
+    window: main_window_module.MainWindow,
+) -> None:
+    runner = _FakeRunner()
+    setattr(window, "_runner", runner)
+    window._mpi_processes_input.setValue(3)
+    window._output_directory_input.setText(str(tmp_path / "runs"))
+
+    window._run_simulation()
+
+    assert runner.arguments is not None
+    case_path, num_procs, output_root = runner.arguments
+    assert num_procs == 3
+    assert output_root == str(tmp_path / "runs")
+    assert Path(case_path).is_file()
+    assert read_case(case_path) == window._gui_case
+
+    window._on_process_finished(0, "NormalExit")
+
+    assert not Path(case_path).exists()
