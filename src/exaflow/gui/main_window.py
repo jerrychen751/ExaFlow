@@ -86,7 +86,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._params_button = QtWidgets.QPushButton("Simulation Params…", controls)
         self._params_button.clicked.connect(self._open_simulation_params_dialog)
-        self._params_status = QtWidgets.QLabel("Configured")
+        self._params_status = QtWidgets.QLabel(controls)
+        self._refresh_case_status()
         params_row = QtWidgets.QHBoxLayout()
         params_row.addWidget(self._params_button)
         params_row.addWidget(self._params_status, 1)
@@ -307,6 +308,11 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = SimulationParametersDialog(self, self._gui_case)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._gui_case = dialog.read_case()
+            self._refresh_case_status()
+
+    def _refresh_case_status(self) -> None:
+        shape = "x".join(str(count) for count in self._gui_case.grid.shape)
+        self._params_status.setText(f"{shape}, {self._gui_case.outputs.format.value}")
 
     def _clear_run_case_directory(self) -> None:
         if self._run_case_directory is None:

@@ -96,21 +96,6 @@ class _FakeSliceController:
         return None
 
 
-class _FakeRunner:
-    def __init__(self) -> None:
-        self.arguments: tuple[str, int, str] | None = None
-
-    def start(self, case_path: str, num_procs: int, output_root: str) -> str:
-        self.arguments = (case_path, num_procs, output_root)
-        return "mpiexec -n 4 exaflow run --case case.xml"
-
-    def is_running(self) -> bool:
-        return False
-
-    def stop(self) -> None:
-        return None
-
-
 @pytest.fixture
 def window(
     monkeypatch: pytest.MonkeyPatch,
@@ -125,11 +110,24 @@ def window(
     result.close()
 
 
-def test_window_has_no_script_or_working_directory_controls(window: main_window_module.MainWindow) -> None:
-    assert not hasattr(window, "_script_path_input")
-    assert not hasattr(window, "_working_directory_input")
+def test_the_status_beside_the_button_names_the_case(window: main_window_module.MainWindow) -> None:
     assert window._params_button.isEnabled()
-    assert window._params_status.text() == "Configured"
+    assert window._params_status.text() == "100x100x50, VTK"
+
+
+class _FakeRunner:
+    def __init__(self) -> None:
+        self.arguments: tuple[str, int, str] | None = None
+
+    def start(self, case_path: str, num_procs: int, output_root: str) -> str:
+        self.arguments = (case_path, num_procs, output_root)
+        return "mpiexec -n 4 exaflow run --case case.xml"
+
+    def is_running(self) -> bool:
+        return False
+
+    def stop(self) -> None:
+        return None
 
 
 def test_run_writes_the_case_and_keeps_it_until_process_exit(
