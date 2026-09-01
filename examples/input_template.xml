@@ -18,6 +18,8 @@
       <nt>1000</nt>
       <numGhosts>1</numGhosts>
       <CFL>0.5</CFL>
+      <EndTime>-1</EndTime>
+      <AdaptiveTimeStep>False</AdaptiveTimeStep>
     </GridProperties>
     <InitialConditions>
       <ReadFromVtrFile>False</ReadFromVtrFile>

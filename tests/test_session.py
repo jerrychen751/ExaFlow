@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -94,6 +95,70 @@ def test_a_run_that_has_reached_its_target_refuses_another_step(moving_case: Cas
     assert session.is_complete()
     with pytest.raises(RuntimeError, match="complete at step 5 of 5"):
         session.advance_one_step()
+
+
+def test_an_end_time_stops_the_run_on_the_exact_second(build_case: Callable[..., Case]) -> None:
+    """
+    The last step is cut to the time that is left, and the run then holds the end time itself. A sum of steps would land one unit in the last place away from it and take one more step of nothing.
+    """
+
+    case = build_case(
+        (6, 6),
+        time=TimeControl(100, 0.25, 1),
+        initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.5),))),
+    )
+    step_size = SimulationSession(case).dt
+    timed = replace(case, time=TimeControl(100, 0.25, 1, end_time=2.5 * step_size))
+
+    session = SimulationSession(timed)
+    session.run_until_complete()
+
+    assert session.current_time == timed.time.end_time
+    assert session.step_index == 3
+
+def test_the_step_budget_caps_a_run_that_would_not_reach_its_end_time(
+    build_case: Callable[..., Case],
+) -> None:
+    case = build_case(
+        (6, 6),
+        time=TimeControl(3, 0.25, 1, end_time=1.0e6),
+        initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.5),))),
+    )
+
+    session = SimulationSession(case)
+    session.run_until_complete()
+
+    assert session.step_index == 3
+    assert session.current_time < 1.0e6
+
+def test_an_adaptive_run_chooses_the_step_size_again_before_every_step(
+    build_case: Callable[..., Case],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The choice costs one reduction across the ranks, so a fixed run pays for it once, when it builds the session, and an adaptive run pays once more for every step.
+    """
+
+    calls = []
+    original = SimulationSession.choose_time_step
+
+    def record(session: SimulationSession) -> float:
+        calls.append(session)
+        return original(session)
+
+    monkeypatch.setattr(SimulationSession, "choose_time_step", record)
+    case = build_case(
+        (6, 6),
+        time=TimeControl(3, 0.25, 1, adaptive_time_step=True),
+        initial=InitialConditions(velocity=((UniformValue(1.0),), (UniformValue(0.5),))),
+    )
+
+    SimulationSession(case).run_until_complete()
+    assert len(calls) == 4
+
+    calls.clear()
+    SimulationSession(replace(case, time=TimeControl(3, 0.25, 1))).run_until_complete()
+    assert len(calls) == 1
 
 
 def test_writers_produce_the_expected_files(tmp_path: Path, moving_case: Case) -> None:

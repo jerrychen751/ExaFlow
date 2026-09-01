@@ -179,6 +179,12 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._double_fields["cfl"] = self._create_double_input(1e-6, 10.0, 4, 0.05)
         form.addRow("CFL", self._double_fields["cfl"])
 
+        self._double_fields["end_time"] = self._create_double_input(0.0, 1e9, 6, 0.1)
+        form.addRow("End time (s, 0 for none)", self._double_fields["end_time"])
+
+        self._bool_fields["adaptive_time_step"] = QtWidgets.QCheckBox("Adaptive time step")
+        form.addRow(self._bool_fields["adaptive_time_step"])
+
         return widget
 
     def _build_solver_tab(self) -> QtWidgets.QWidget:
@@ -336,6 +342,8 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._int_fields["nt"].setValue(case.time.num_steps)
         self._int_fields["num_ghost_layers"].setValue(case.grid.num_ghost_layers)
         self._double_fields["cfl"].setValue(case.time.cfl)
+        self._double_fields["end_time"].setValue(0.0 if case.time.end_time is None else case.time.end_time)
+        self._bool_fields["adaptive_time_step"].setChecked(case.time.adaptive_time_step)
 
         self._bool_fields["include_convection"].setChecked(case.solver.include_convection)
         self._combo_fields["convection_scheme"].setCurrentText(case.solver.convection_scheme)
@@ -395,6 +403,8 @@ class SimulationParametersDialog(QtWidgets.QDialog):
                 num_steps=self._int_fields["nt"].value(),
                 cfl=self._double_fields["cfl"].value(),
                 integration_order=self._int_fields["time_integration_order"].value(),
+                end_time=self._double_fields["end_time"].value() or None,
+                adaptive_time_step=self._bool_fields["adaptive_time_step"].isChecked(),
             ),
             boundaries=Boundaries(**faces),
             initial=parse_initial_conditions(initial_element, 3),

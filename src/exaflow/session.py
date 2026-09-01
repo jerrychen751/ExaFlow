@@ -81,10 +81,13 @@ class SimulationSession:
 
     def is_complete(self) -> bool:
         """
-        Report whether the run has reached its target. `case.time.num_steps` is the step budget of the whole run counted from time zero.
+        Report whether the run has reached its target. `case.time.num_steps` is the step budget of the whole run counted from time zero. An end time stops the run as soon as `current_time` reaches it.
         """
 
-        return self.step_index >= self.case.time.num_steps
+        if self.step_index >= self.case.time.num_steps:
+            return True
+        end_time = self.case.time.end_time
+        return end_time is not None and self.current_time >= end_time
 
     def write(self, label: str) -> None:
         """
@@ -98,15 +101,25 @@ class SimulationSession:
         """
         Take one step, then write through every writer whose interval names the completed step count, so the label of a file and the step a reader counts are the same number.
 
-        The caller tests `is_complete` first. This replaces `state`, so a reference the caller kept before the call is a stale buffer.
+        The caller tests `is_complete` first, because a run that has reached its end time would otherwise take a step of zero or less. This replaces `state`, so a reference the caller kept before the call is a stale buffer.
         """
 
         if self.is_complete():
             raise RuntimeError(f"The run is complete at step {self.step_index} of {self.case.time.num_steps}.")
 
-        self.state = self._integrator.advance(self.state, self.dt)
+        if self.case.time.adaptive_time_step:
+            self.dt = self.choose_time_step()
+        end_time = self.case.time.end_time
+        if end_time is not None and end_time - self.current_time <= self.dt:
+            step_size = end_time - self.current_time
+            next_time = end_time
+        else:
+            step_size = self.dt
+            next_time = self.current_time + self.dt
+
+        self.state = self._integrator.advance(self.state, step_size)
         self.step_index += 1
-        self.current_time += self.dt
+        self.current_time = next_time
 
         label = str(self.step_index)
         for writer in self.writers:

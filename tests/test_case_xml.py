@@ -112,6 +112,8 @@ def read_template_root(path: Path) -> ElementTree.Element:
         ("Simulation", "OutputProperties"),
         ("OutputProperties", "Format"),
         ("GridProperties", "Domain"),
+        ("GridProperties", "EndTime"),
+        ("GridProperties", "AdaptiveTimeStep"),
         ("BoundaryConditions", "LeftWall"),
     ],
 )

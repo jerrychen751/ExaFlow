@@ -17,7 +17,7 @@ VELOCITY_NAMES = ("u", "v", "w")
 
 def read_case(path: str) -> Case:
     """
-    Build a Case from an input XML file. Raises ValueError on a missing or malformed element rather than filling in a default, because a silent default in an input file is a wrong answer nobody sees.
+    Build a Case from an input XML file. Raises ValueError on a missing or malformed element rather than filling in a default, because a silent default in an input file is a wrong answer nobody sees. `<EndTime>-1</EndTime>` means no end time, which is the spelling the write frequencies already use for no file.
 
     ParallelizationProperties is ignored. The rank arrangement follows the communicator the solver is given, so it belongs to a run and not to the case.
     """
@@ -51,10 +51,13 @@ def parse_case(root: ElementTree.Element) -> Case:
     )
 
     solver_node = _find_child(root, "SolverProperties")
+    end_time = _read_float(grid_node, "EndTime")
     time = TimeControl(
         num_steps=_read_int(grid_node, "nt"),
         cfl=_read_float(grid_node, "CFL"),
         integration_order=_read_int(solver_node, "TimeIntegrationOrder"),
+        end_time=None if end_time == -1.0 else end_time,
+        adaptive_time_step=_read_bool(grid_node, "AdaptiveTimeStep"),
     )
     solver = SolverOptions(
         include_convection=_read_bool(solver_node, "IncludeConvectionEffects"),
@@ -125,6 +128,8 @@ def write_case(case: Case) -> str:
     _put(grid_node, "nt", case.time.num_steps)
     _put(grid_node, "numGhosts", case.grid.num_ghost_layers)
     _put(grid_node, "CFL", case.time.cfl)
+    _put(grid_node, "EndTime", -1 if case.time.end_time is None else case.time.end_time)
+    _put(grid_node, "AdaptiveTimeStep", case.time.adaptive_time_step)
 
     root.append(_write_initial(case.initial, case.dimension))
     root.append(_write_boundaries(case.boundaries, case.dimension))

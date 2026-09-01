@@ -195,6 +195,15 @@ uv run mpiexec -n 4 exaflow run --case examples/input_template.xml
 
 The CLI reads the XML file, creates one shared run directory, and calls the typed `run_case` core. `--label` replaces the file stem in the run directory name. `--input-xml` remains a compatibility name for `--case`.
 
+How far the run marches lives in `<GridProperties>` beside `<nt>` and `<CFL>`:
+
+```xml
+<EndTime>-1</EndTime>
+<AdaptiveTimeStep>False</AdaptiveTimeStep>
+```
+
+`<EndTime>` marches to a simulated time in seconds instead of a step count, and `<nt>` is then the cap that stops a run whose step size shrinks faster than the time that is left. The last step is cut to land on the end time itself. `-1` asks for no end time. `<AdaptiveTimeStep>` chooses the step size again from the current state before every step, instead of once from the initial state; it costs one pass over the velocity arrays and one reduction across the ranks per step, which is about 2 percent of an Euler step on the shipped template.
+
 ### From the Python API
 
 Build a `Case` and give it to `run_case`:

@@ -96,6 +96,18 @@ def test_time_control_rejects_a_setting_the_march_cannot_use(
         TimeControl(num_steps, cfl, order)
 
 
+@pytest.mark.parametrize("end_time", [0.0, -1.0, float("nan"), float("inf")])
+def test_time_control_rejects_an_end_time_the_march_cannot_reach(end_time: float) -> None:
+    with pytest.raises(ValueError, match="end_time must be finite and > 0"):
+        TimeControl(10, 0.25, 1, end_time=end_time)
+
+
+def test_a_run_with_no_end_time_marches_on_the_step_budget_alone() -> None:
+    control = TimeControl(10, 0.25)
+    assert control.end_time is None
+    assert control.adaptive_time_step is False
+
+
 def test_output_control_rejects_a_zero_interval() -> None:
     with pytest.raises(ValueError, match="must be -1 or >= 1"):
         OutputControl(total_frequency=0)
