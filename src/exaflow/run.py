@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from .config import Case
 from .fields import FlowState
-from .solver import Solver
+from .session import SimulationSession
+
+if TYPE_CHECKING:
+    from mpi4py.MPI import Intracomm
 
 
 def run_case(
     case: Case,
-    comm: Any | None = None,
+    comm: Intracomm | None = None,
     *,
     output_directory: str | None = None,
 ) -> FlowState:
@@ -17,4 +20,4 @@ def run_case(
     Run one typed Case on this rank and return its final local state. Every MPI rank must call this function with the same Case and output directory.
     """
 
-    return Solver(case, comm, output_directory=output_directory).run()
+    return SimulationSession(case, comm, output_directory=output_directory).run_until_complete()

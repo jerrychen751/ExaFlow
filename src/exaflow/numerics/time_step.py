@@ -1,7 +1,36 @@
 from __future__ import annotations
 
+import math
+
+from ..config.case import Case
 from ..fields import FlowState
 from .operators import SpatialOperator
+
+
+def compute_time_step(case: Case, max_velocity: float) -> float:
+    """
+    The largest stable explicit step for this case, in seconds: the smaller of the advective limit cfl * min(h) / max|u| and the viscous limit 0.5 / (nu * sum(1 / h^2)).
+
+    A motionless field has no advective limit and an inviscid fluid has no viscous limit, so a case with neither raises rather than return an infinite step.
+    """
+
+    if not math.isfinite(max_velocity) or max_velocity < 0.0:
+        raise ValueError(f"max_velocity must be finite and >= 0, got {max_velocity}.")
+
+    spacing = case.grid.spacing
+    advective = math.inf if max_velocity == 0.0 else case.time.cfl * min(spacing) / max_velocity
+    if case.fluid.nu == 0.0:
+        viscous = math.inf
+    else:
+        viscous = 0.5 / (case.fluid.nu * sum(1.0 / (step * step) for step in spacing))
+
+    step = min(advective, viscous)
+    if not math.isfinite(step):
+        raise ValueError(
+            "Cannot choose a time step: the fluid is inviscid and the initial velocity is zero, "
+            "so neither the advective nor the viscous limit applies."
+        )
+    return step
 
 
 class TimeIntegrator:

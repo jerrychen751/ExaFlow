@@ -40,7 +40,7 @@ def gather_domain_fields(
 
 class Writer(Protocol):
     """
-    One output format. `frequency` is the interval in steps, or -1 to write only when the solver asks directly. `write` is collective: every rank must call it, because a writer that assembles the full domain reduces across ranks.
+    One output format. `frequency` is the interval in steps, or -1 to write only when the session asks directly. `write` is collective: every rank must call it, because a writer that assembles the full domain reduces across ranks.
     """
 
     frequency: int
@@ -147,7 +147,7 @@ def build_writers(
     outputs: OutputControl,
 ) -> tuple[Writer, ...]:
     """
-    The writers for one run, each carrying the interval its file was given. Every writer belongs to the one format the case selected, so a run folder holds .vtr files or .csv files and never both. An interval of -1 still gets a writer, because the solver writes the first and last state through every writer whatever its interval.
+    The writers for one run, each carrying the interval its file was given. Every writer belongs to the one format the case selected, so a run folder holds .vtr files or .csv files and never both. An interval of -1 still gets a writer, because the session writes the first and last state through every writer whatever its interval.
     """
 
     if outputs.format is OutputFormat.VTK:

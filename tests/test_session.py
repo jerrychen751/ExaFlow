@@ -19,7 +19,7 @@ from exaflow.config import (
     TimeControl,
     UniformValue,
 )
-from exaflow.solver import Solver, compute_time_step
+from exaflow.session import SimulationSession
 
 
 @pytest.fixture(scope="session")
@@ -36,68 +36,68 @@ def moving_case(build_case: Callable[..., Case]) -> Case:
     )
 
 
-def test_time_step_takes_the_stricter_of_the_two_limits(moving_case: Case) -> None:
-    spacing = moving_case.grid.spacing[0]
-    advective = moving_case.time.cfl * spacing / 1.0
-    viscous = 0.5 / (moving_case.fluid.nu * 3.0 / spacing**2)
-    assert compute_time_step(moving_case, 1.0) == pytest.approx(min(advective, viscous))
-
-
-def test_an_inviscid_fluid_takes_the_advective_limit(build_case: Callable[..., Case]) -> None:
-    case = build_case((8, 8, 8), fluid=Fluid(1.0, 0.0), time=TimeControl(1, 0.4))
-    assert compute_time_step(case, 2.0) == pytest.approx(0.4 * case.grid.spacing[0] / 2.0)
-
-
-def test_a_motionless_field_takes_the_viscous_limit(build_case: Callable[..., Case]) -> None:
-    case = build_case((8, 8, 8), fluid=Fluid(1.0, 0.5))
-    spacing = case.grid.spacing[0]
-    assert compute_time_step(case, 0.0) == pytest.approx(0.5 / (0.5 * 3.0 / spacing**2))
-
-
-def test_the_step_follows_the_shortest_spacing(build_case: Callable[..., Case]) -> None:
-    """
-    A stretched grid is stable only at the limit its thinnest cell allows, so the advective limit reads min(h) and not the spacing of the first axis.
-    """
-
-    case = build_case((5, 21), fluid=Fluid(1.0, 0.0), grid=Grid((5, 21), (1.0, 1.0), 1), time=TimeControl(1, 0.5))
-    assert compute_time_step(case, 1.0) == pytest.approx(0.5 * min(case.grid.spacing))
-
-
-def test_a_motionless_inviscid_case_has_no_stable_step(build_case: Callable[..., Case]) -> None:
-    case = build_case((4, 4, 4), fluid=Fluid(1.0, 0.0), time=TimeControl(1, 0.25))
-    with pytest.raises(ValueError, match="Cannot choose a time step"):
-        compute_time_step(case, 0.0)
-
-
-@pytest.mark.parametrize("max_velocity", [-1.0, float("nan"), float("inf")])
-def test_a_velocity_that_is_not_a_speed_is_refused(moving_case: Case, max_velocity: float) -> None:
-    with pytest.raises(ValueError, match="max_velocity must be finite and >= 0"):
-        compute_time_step(moving_case, max_velocity)
-
-
 def test_a_serial_run_stays_finite_and_respects_the_inflow(moving_case: Case) -> None:
-    solver = Solver(moving_case)
-    state = solver.run()
+    session = SimulationSession(moving_case)
+    state = session.run_until_complete()
     assert np.all(np.isfinite(state.velocity))
     assert np.allclose(state.velocity[0][0, 1:-1, 1:-1], 2.0)
 
 
-def test_a_solver_with_no_destination_writes_nothing(moving_case: Case) -> None:
-    assert Solver(moving_case).writers == ()
+def test_a_session_with_no_destination_writes_nothing(moving_case: Case) -> None:
+    assert SimulationSession(moving_case).writers == ()
 
 
 def test_explicit_writers_replace_the_standard_set(tmp_path: Path, moving_case: Case) -> None:
     from exaflow.io.writers import RankCsvWriter
 
-    solver = Solver(moving_case, output_directory=str(tmp_path), writers=())
-    assert solver.writers == ()
+    session = SimulationSession(moving_case, output_directory=str(tmp_path), writers=())
+    assert session.writers == ()
 
-    solver = Solver(moving_case, writers=(RankCsvWriter(str(tmp_path), Solver(moving_case).subdomain),))
-    assert len(solver.writers) == 1
+    session = SimulationSession(moving_case, writers=(RankCsvWriter(str(tmp_path), session.subdomain),))
+    assert len(session.writers) == 1
+
+
+def test_the_position_starts_at_zero_and_moves_with_every_step(moving_case: Case) -> None:
+    session = SimulationSession(moving_case)
+    assert (session.step_index, session.current_time) == (0, 0.0)
+
+    session.advance_one_step()
+
+    assert session.step_index == 1
+    assert session.current_time == pytest.approx(session.dt)
+
+
+def test_one_step_at_a_time_gives_the_same_answer_as_one_call(moving_case: Case) -> None:
+    """
+    A caller that stops between steps has to reach the state a whole run reaches, or a restart would answer a different question from the run it continues.
+    """
+
+    whole = SimulationSession(moving_case).run_until_complete()
+
+    stepped = SimulationSession(moving_case)
+    for _ in range(moving_case.time.num_steps):
+        stepped.advance_one_step()
+
+    assert np.array_equal(stepped.state.velocity, whole.velocity)
+    assert np.array_equal(stepped.state.pressure, whole.pressure)
+    assert stepped.current_time == pytest.approx(moving_case.time.num_steps * stepped.dt)
+
+
+def test_a_run_that_has_reached_its_target_refuses_another_step(moving_case: Case) -> None:
+    """
+    The step size of a run at its end time is zero or less, so the run would march backwards rather than stand still.
+    """
+
+    session = SimulationSession(moving_case)
+    session.run_until_complete()
+
+    assert session.is_complete()
+    with pytest.raises(RuntimeError, match="complete at step 5 of 5"):
+        session.advance_one_step()
 
 
 def test_writers_produce_the_expected_files(tmp_path: Path, moving_case: Case) -> None:
-    Solver(moving_case, output_directory=str(tmp_path)).run()
+    SimulationSession(moving_case, output_directory=str(tmp_path)).run_until_complete()
 
     written = sorted(entry.name for entry in tmp_path.iterdir())
     assert "Final_Total.csv" in written
@@ -120,10 +120,10 @@ def test_a_run_folder_holds_the_one_format_the_case_selected(
         initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in range(3))),
         outputs=OutputControl(format=OutputFormat.VTK, total_frequency=2),
     )
-    Solver(case, output_directory=str(tmp_path)).run()
+    SimulationSession(case, output_directory=str(tmp_path)).run_until_complete()
 
     written = sorted(entry.name for entry in tmp_path.iterdir())
-    assert written == ["0_Total.vtr", "2_Total.vtr", "4_Total.vtr", "Final_Total.vtr", "Original_Total.vtr"]
+    assert written == ["2_Total.vtr", "4_Total.vtr", "Final_Total.vtr", "Original_Total.vtr"]
 
 
 def test_an_interval_writes_at_the_steps_it_selects(
@@ -131,7 +131,7 @@ def test_an_interval_writes_at_the_steps_it_selects(
     build_case: Callable[..., Case],
 ) -> None:
     """
-    The interval selects the zero-based step, so a frequency of 2 over five steps writes at 0, 2 and 4. The first and last state go through every writer whatever the interval, and they carry the labels Original and Final instead.
+    The interval selects the completed step count, so a frequency of 2 over five steps writes after step 2 and step 4. The first and last state go through every writer whatever the interval, and they carry the labels Original and Final instead.
     """
 
     case = build_case(
@@ -140,10 +140,10 @@ def test_an_interval_writes_at_the_steps_it_selects(
         initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in range(3))),
         outputs=OutputControl(total_frequency=2),
     )
-    Solver(case, output_directory=str(tmp_path)).run()
+    SimulationSession(case, output_directory=str(tmp_path)).run_until_complete()
 
     totals = sorted(entry.name for entry in tmp_path.iterdir() if entry.name.endswith("_Total.csv"))
-    assert totals == ["0_Total.csv", "2_Total.csv", "4_Total.csv", "Final_Total.csv", "Original_Total.csv"]
+    assert totals == ["2_Total.csv", "4_Total.csv", "Final_Total.csv", "Original_Total.csv"]
 
 
 def test_write_initial_false_leaves_out_the_starting_state(
@@ -155,7 +155,7 @@ def test_write_initial_false_leaves_out_the_starting_state(
         time=TimeControl(2, 0.25, 1),
         initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in range(3))),
     )
-    Solver(case, output_directory=str(tmp_path)).run(write_initial=False)
+    SimulationSession(case, output_directory=str(tmp_path)).run_until_complete(write_initial=False)
 
     written = sorted(entry.name for entry in tmp_path.iterdir())
     assert not any(name.startswith("Original") for name in written)
@@ -181,7 +181,7 @@ def test_vtk_output_pads_a_case_below_three_axes(
         initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in shape)),
         outputs=OutputControl(format=OutputFormat.VTK),
     )
-    Solver(case, output_directory=str(tmp_path)).run()
+    SimulationSession(case, output_directory=str(tmp_path)).run_until_complete()
 
     mesh = pyvista.read(str(tmp_path / "Final_Total.vtr"))
     assert mesh.dimensions == (*shape, *(1,) * (3 - len(shape)))
@@ -219,3 +219,4 @@ def test_the_answer_does_not_depend_on_the_rank_count(
     run_under_mpiexec("_run_case.py", num_procs, str(tmp_path))
     written = (tmp_path / "Final_Total.csv").read_bytes()
     assert written == serial_reference_output, f"1 rank and {num_procs} ranks disagree"
+

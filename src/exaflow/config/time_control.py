@@ -50,7 +50,7 @@ class OutputControl:
     """
     Which format a run writes, and how often, counted in time steps. One run writes one format, so a run folder holds .vtr files or .csv files and never both.
 
-    `total_frequency` is the interval of the file that holds the whole domain, and `partial_frequency` the interval of the per-rank files. Only CSV has a per-rank file, so VTK rejects a `partial_frequency` other than -1 rather than accept a value it would drop. A frequency of -1 asks for no writes during the march; it does not turn the format off, because the solver writes the first and last state through every writer whatever its interval. Zero and negative values other than -1 are rejected, because a modulo against them cannot decide a step.
+    `total_frequency` is the interval of the file that holds the whole domain, and `partial_frequency` the interval of the per-rank files. Only CSV has a per-rank file, so VTK rejects a `partial_frequency` other than -1 rather than accept a value it would drop. A frequency of -1 asks for no writes during the march; it does not turn the format off, because the session writes the first and last state through every writer whatever its interval. Zero and negative values other than -1 are rejected, because a modulo against them cannot decide a step.
     """
 
     format: OutputFormat = OutputFormat.CSV
@@ -70,7 +70,7 @@ class OutputControl:
 
     def is_due(self, frequency: int, step: int) -> bool:
         """
-        Report whether a writer whose interval is `frequency` writes at this zero-based step.
+        Report whether a writer whose interval is `frequency` writes at this step. The step is the count of completed steps, so a frequency of 2 over five steps selects steps 2 and 4.
         """
 
         return frequency >= 1 and step % frequency == 0

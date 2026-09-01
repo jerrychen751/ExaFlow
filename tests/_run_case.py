@@ -13,7 +13,7 @@ from exaflow.config import (
     InitialConditions, TimeControl, UniformValue,
 )
 from exaflow.io.writers import TotalCsvWriter
-from exaflow.solver import Solver
+from exaflow.session import SimulationSession
 
 case = Case(
     fluid=Fluid(1.225, 0.3),
@@ -23,6 +23,6 @@ case = Case(
     initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in range(3))),
 )
 comm = mpi.COMM_WORLD
-solver = Solver(case, comm, writers=None, output_directory=None)
-solver.writers = (TotalCsvWriter(sys.argv[1], solver.subdomain, comm),)
-solver.run(write_initial=False)
+session = SimulationSession(case, comm, writers=None, output_directory=None)
+session.writers = (TotalCsvWriter(sys.argv[1], session.subdomain, comm),)
+session.run_until_complete(write_initial=False)

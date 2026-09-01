@@ -20,7 +20,7 @@ from exaflow.mpi.subdomain import Subdomain
 from exaflow.numerics.convection import Convection
 from exaflow.numerics.diffusion import Diffusion
 from exaflow.numerics.operators import SpatialOperator, build_operators
-from exaflow.numerics.time_step import TimeIntegrator
+from exaflow.numerics.time_step import TimeIntegrator, compute_time_step
 
 PERIODIC = FaceCondition(BoundaryCondition.PERIODIC)
 ALL_PERIODIC = Boundaries(left=PERIODIC, right=PERIODIC, top=PERIODIC, bottom=PERIODIC, front=PERIODIC, back=PERIODIC)
@@ -189,6 +189,49 @@ def test_a_stage_overwrites_the_rate_it_is_handed(
     spatial.evaluate(state, rate)
 
     assert np.array_equal(rate.velocity, first)
+
+
+def test_the_step_takes_the_stricter_of_the_two_limits(build_case: Callable[..., Case]) -> None:
+    case = build_case((12, 12, 12))
+    spacing = case.grid.spacing[0]
+    advective = case.time.cfl * spacing / 1.0
+    viscous = 0.5 / (case.fluid.nu * 3.0 / spacing**2)
+    assert compute_time_step(case, 1.0) == pytest.approx(min(advective, viscous))
+
+
+def test_an_inviscid_fluid_takes_the_advective_limit(build_case: Callable[..., Case]) -> None:
+    case = build_case((8, 8, 8), fluid=Fluid(1.0, 0.0), time=TimeControl(1, 0.4))
+    assert compute_time_step(case, 2.0) == pytest.approx(0.4 * case.grid.spacing[0] / 2.0)
+
+
+def test_a_motionless_field_takes_the_viscous_limit(build_case: Callable[..., Case]) -> None:
+    case = build_case((8, 8, 8), fluid=Fluid(1.0, 0.5))
+    spacing = case.grid.spacing[0]
+    assert compute_time_step(case, 0.0) == pytest.approx(0.5 / (0.5 * 3.0 / spacing**2))
+
+
+def test_the_step_follows_the_shortest_spacing(build_case: Callable[..., Case]) -> None:
+    """
+    A stretched grid is stable only at the limit its thinnest cell allows, so the advective limit reads min(h) and not the spacing of the first axis.
+    """
+
+    case = build_case((5, 21), fluid=Fluid(1.0, 0.0), grid=Grid((5, 21), (1.0, 1.0), 1), time=TimeControl(1, 0.5))
+    assert compute_time_step(case, 1.0) == pytest.approx(0.5 * min(case.grid.spacing))
+
+
+def test_a_motionless_inviscid_case_has_no_stable_step(build_case: Callable[..., Case]) -> None:
+    case = build_case((4, 4, 4), fluid=Fluid(1.0, 0.0), time=TimeControl(1, 0.25))
+    with pytest.raises(ValueError, match="Cannot choose a time step"):
+        compute_time_step(case, 0.0)
+
+
+@pytest.mark.parametrize("max_velocity", [-1.0, float("nan"), float("inf")])
+def test_a_velocity_that_is_not_a_speed_is_refused(
+    build_case: Callable[..., Case],
+    max_velocity: float,
+) -> None:
+    with pytest.raises(ValueError, match="max_velocity must be finite and >= 0"):
+        compute_time_step(build_case((4, 4, 4)), max_velocity)
 
 
 @pytest.mark.parametrize("order", [0, 4, -1])

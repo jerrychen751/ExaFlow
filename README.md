@@ -112,7 +112,7 @@ src/exaflow/
         pressure_poisson.py # Chorin projection (single rank, not yet wired in)
         README.md # array shapes, ghost layer rules, how to write an operator
     boundary_application.py # writes boundary values into the ghost layers
-    solver.py # Solver: the one time loop
+    session.py # SimulationSession: one run in progress, and the one time loop
     io/
         writers.py # Writer protocol, TotalCsvWriter, RankCsvWriter, VtkWriter
         csv.py # CSV formatting and the atomic write
@@ -133,7 +133,7 @@ scripts/ # the commands you run, one file per task
     update_app.py # builds ExaFlow.app and installs it
 ```
 
-Start with `src/exaflow/cli.py`, then follow its `run_case` call into `src/exaflow/run.py` and `Solver`. The CLI parses process input, `run_case` starts one typed case, and `Solver` owns the time loop.
+Start with `src/exaflow/cli.py`, then follow its `run_case` call into `src/exaflow/run.py` and `SimulationSession`. The CLI parses process input, `run_case` starts one typed case, and the session owns the fields, the position of the run and the time loop.
 
 Read `src/exaflow/numerics/README.md` before you touch a stencil. It states the array shapes, the ghost layer index rules, and the rules an operator has to follow.
 
@@ -175,7 +175,7 @@ The domain is split across MPI processes in a process grid. Each process works o
 
 `Subdomain` owns every index rule that follows from that split: the block bounds, the padded shape, the interior slice, the neighbor ranks, and `is_on_face`, which reports whether this rank owns a face of the **global** domain. A boundary condition or a one-sided stencil is correct only where `is_on_face` is true; elsewhere the ghost layer already holds the neighbor's data.
 
-**The answer does not depend on the rank count.** A run at 1, 2, 4 or 8 ranks writes byte-identical output. `tests/test_solver.py` checks this, and it is the first property to look at after touching an operator or the exchange.
+**The answer does not depend on the rank count.** A run at 1, 2, 4 or 8 ranks writes byte-identical output. `tests/test_session.py` checks this, and it is the first property to look at after touching an operator or the exchange.
 
 ## Running simulations
 
@@ -214,7 +214,9 @@ case = Case(
 run_case(case, comm, output_directory=create_run_directory("my_case", comm))
 ```
 
-A `Case` is frozen, so it can be built once and compared. It holds no communicator and no output directory. Those values belong to a run, and `run_case` passes them to `Solver`.
+A `Case` is frozen, so it can be built once and compared. It holds no communicator and no output directory. Those values belong to a run, and `run_case` passes them to `SimulationSession`.
+
+Build the session yourself to stop between steps. It holds `state`, `step_index`, `current_time` and `dt`, `advance_one_step` moves all four, and `is_complete` reports whether the run has reached its target.
 
 `create_run_directory` is a collective call. Rank 0 picks the folder name and broadcasts it, so every rank has to call it. A call on rank 0 alone makes the other ranks wait forever.
 
@@ -283,11 +285,11 @@ What the suite holds:
 | `test_process_grid.py`, `test_subdomain.py` | the factor search, the block bounds, the face tests and the neighbor ranks |
 | `test_fields.py` | the state arithmetic each Runge-Kutta stage needs, and a step box that lands the same at any rank count |
 | `test_boundary_application.py` | what each of the five conditions writes, and what it leaves alone |
-| `test_numerics.py` | the operators against analytic answers, and the convergence order of each scheme |
+| `test_numerics.py` | the operators against analytic answers, the time step limits, and the convergence order of each scheme |
 | `test_ghost_exchange.py` | the serial periodic copy, and the periodic wrap under `mpiexec` |
 | `test_pressure_poisson.py` | the operator symmetry, and that the residual divergence falls at second order |
 | `test_io.py`, `test_csv_loader.py` | the CSV format, the atomic write, the run folder, and the loader the GUI reads with |
-| `test_solver.py` | the time step limits, the output schedule, and the rank-count independence of a whole run |
+| `test_session.py` | the position of a run, the output schedule, and the rank-count independence of a whole run |
 | `test_run.py`, `test_cli.py` | the typed run core and the standard console entry point under one or more MPI processes |
 | `test_main_window.py`, `test_simulation_runner.py`, `test_simulation_scaffold.py` | the GUI window, the GUI child command and the case-only simulation scaffold |
 | `test_streaming.py` | the length-prefixed stream between a run and the viewer |

@@ -8,7 +8,7 @@ import pytest
 from exaflow.config import Case, Fluid, Grid, InitialConditions, TimeControl, UniformValue
 from exaflow.gui.csv_loader import load_total_csv_to_imagedata
 from exaflow.io.writers import TotalCsvWriter
-from exaflow.solver import Solver
+from exaflow.session import SimulationSession
 
 pytestmark = pytest.mark.gui
 
@@ -27,9 +27,9 @@ def write_total_csv(directory: Path, shape: tuple[int, ...]) -> str:
             pressure=(UniformValue(7.5),),
         ),
     )
-    solver = Solver(case)
-    solver.writers = (TotalCsvWriter(str(directory), solver.subdomain, None),)
-    solver.run()
+    session = SimulationSession(case)
+    session.writers = (TotalCsvWriter(str(directory), session.subdomain, None),)
+    session.run_until_complete()
     return str(directory / "Final_Total.csv")
 
 
