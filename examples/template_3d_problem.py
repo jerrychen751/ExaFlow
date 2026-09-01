@@ -1,7 +1,5 @@
 """
-A 50x50x50 lid-inflow box run for 50 steps. This is the shortest complete driver: build a Case, hand it to a Solver, run.
-
-Run it on one process with `uv run python examples/template_3d_problem.py`, or on four with `uv run mpiexec -n 4 python examples/template_3d_problem.py`. The result is the same either way.
+A 50x50x50 lid-inflow box run for 50 steps. This example shows the typed Python API; `exaflow run --case` is the standard command-line entry point.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from exaflow.config import (
     UniformValue,
 )
 from exaflow.io.storage import create_run_directory
-from exaflow.solver import Solver
+from exaflow.run import run_case
 
 
 def main() -> None:
@@ -35,9 +33,8 @@ def main() -> None:
         initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in range(3))),
     )
 
-    solver = Solver(case, comm, output_directory=run_directory)
-    solver.run()
-    if solver.rank == 0:
+    run_case(case, comm, output_directory=run_directory)
+    if comm.Get_rank() == 0:
         print(f"Wrote {run_directory}", flush=True)
 
 

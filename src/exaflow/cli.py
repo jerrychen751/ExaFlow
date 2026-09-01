@@ -15,15 +15,25 @@ from pathlib import Path
 
 from .config.case_xml import read_case
 from .io.storage import create_run_directory
-from .solver import Solver
+from .run import run_case
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="exaflow", description="Run an ExaFlow case.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     run_parser = subparsers.add_parser("run", help="Run a case given as an input XML file.")
-    run_parser.add_argument("--case", "--input-xml", dest="case", required=True, help="Path to the input XML file.")
-    run_parser.add_argument("--label", default=None, help="Name for the run folder; defaults to the file stem.")
+    run_parser.add_argument(
+        "--case",
+        "--input-xml",
+        dest="case",
+        required=True,
+        help="Path to the input XML file.",
+    )
+    run_parser.add_argument(
+        "--label",
+        default=None,
+        help="Name for the run folder; defaults to the file stem.",
+    )
     arguments, _ = parser.parse_known_args(argv)
 
     try:
@@ -36,9 +46,9 @@ def main(argv: list[str] | None = None) -> int:
     label = arguments.label or Path(arguments.case).stem
     run_directory = create_run_directory(label, comm)
 
-    solver = Solver(case, comm, output_directory=run_directory)
-    solver.run()
-    if solver.rank == 0:
+    run_case(case, comm, output_directory=run_directory)
+    rank = int(comm.Get_rank()) if comm is not None else 0
+    if rank == 0:
         print(f"Wrote {run_directory}", flush=True)
     return 0
 
