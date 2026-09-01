@@ -6,6 +6,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from ..config.grid import Grid
+from ..config.time_control import OutputControl, OutputFormat
 from ..fields import FlowState
 from ..mpi.gather import gather_global_array
 from ..mpi.subdomain import Subdomain
@@ -140,16 +141,15 @@ def build_writers(
     grid: Grid,
     subdomain: Subdomain,
     comm: Any | None,
-    total_csv_frequency: int = -1,
-    partial_csv_frequency: int = -1,
-    vtk_frequency: int = -1,
+    outputs: OutputControl,
 ) -> tuple[Writer, ...]:
     """
-    The standard writers for a run, each carrying the interval its format was given. A format switched off with -1 still gets a writer, because the solver writes the first and last state through every writer whatever its interval.
+    The writers for one run, each carrying the interval its file was given. Every writer belongs to the one format the case selected, so a run folder holds .vtr files or .csv files and never both. An interval of -1 still gets a writer, because the solver writes the first and last state through every writer whatever its interval.
     """
 
+    if outputs.format is OutputFormat.VTK:
+        return (VtkWriter(directory, grid, subdomain, comm, frequency=outputs.total_frequency),)
     return (
-        TotalCsvWriter(directory, subdomain, comm, frequency=total_csv_frequency),
-        RankCsvWriter(directory, subdomain, frequency=partial_csv_frequency),
-        VtkWriter(directory, grid, subdomain, comm, frequency=vtk_frequency),
+        TotalCsvWriter(directory, subdomain, comm, frequency=outputs.total_frequency),
+        RankCsvWriter(directory, subdomain, frequency=outputs.partial_frequency),
     )

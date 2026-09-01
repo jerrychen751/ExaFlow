@@ -67,15 +67,7 @@ class Solver:
         if writers is not None:
             self.writers: tuple[Writer, ...] = tuple(writers)
         elif output_directory is not None:
-            self.writers = build_writers(
-                output_directory,
-                case.grid,
-                self.subdomain,
-                comm,
-                total_csv_frequency=case.outputs.total_csv_frequency,
-                partial_csv_frequency=case.outputs.partial_csv_frequency,
-                vtk_frequency=case.outputs.vtk_frequency,
-            )
+            self.writers = build_writers(output_directory, case.grid, self.subdomain, comm, case.outputs)
         else:
             self.writers = ()
 

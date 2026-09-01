@@ -15,6 +15,7 @@ from exaflow.config import (
     Grid,
     InitialConditions,
     OutputControl,
+    OutputFormat,
     TimeControl,
     UniformValue,
 )
@@ -105,6 +106,26 @@ def test_writers_produce_the_expected_files(tmp_path: Path, moving_case: Case) -
     assert not any(name.endswith(".partial") for name in written)
 
 
+def test_a_run_folder_holds_the_one_format_the_case_selected(
+    tmp_path: Path,
+    build_case: Callable[..., Case],
+) -> None:
+    """
+    The case selects one format, so no writer of another format runs, and neither the interval writes nor the first and last state leave a file of a second format behind.
+    """
+
+    case = build_case(
+        (6, 6, 6),
+        time=TimeControl(5, 0.25, 1),
+        initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in range(3))),
+        outputs=OutputControl(format=OutputFormat.VTK, total_frequency=2),
+    )
+    Solver(case, output_directory=str(tmp_path)).run()
+
+    written = sorted(entry.name for entry in tmp_path.iterdir())
+    assert written == ["0_Total.vtr", "2_Total.vtr", "4_Total.vtr", "Final_Total.vtr", "Original_Total.vtr"]
+
+
 def test_an_interval_writes_at_the_steps_it_selects(
     tmp_path: Path,
     build_case: Callable[..., Case],
@@ -117,7 +138,7 @@ def test_an_interval_writes_at_the_steps_it_selects(
         (6, 6, 6),
         time=TimeControl(5, 0.25, 1),
         initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in range(3))),
-        outputs=OutputControl(total_csv_frequency=2),
+        outputs=OutputControl(total_frequency=2),
     )
     Solver(case, output_directory=str(tmp_path)).run()
 
@@ -158,6 +179,7 @@ def test_vtk_output_pads_a_case_below_three_axes(
         grid=Grid(shape, extent, 1),
         time=TimeControl(1, 0.25, 1),
         initial=InitialConditions(velocity=tuple((UniformValue(1.0),) for _ in shape)),
+        outputs=OutputControl(format=OutputFormat.VTK),
     )
     Solver(case, output_directory=str(tmp_path)).run()
 

@@ -15,9 +15,11 @@ from ..config import (
     Fluid,
     Grid,
     OutputControl,
+    OutputFormat,
     SolverOptions,
     TimeControl,
     parse_boundary_condition,
+    parse_output_format,
 )
 from ..config.case_xml import parse_initial_conditions, write_initial_conditions
 
@@ -86,7 +88,7 @@ def build_default_case() -> Case:
             right=FaceCondition(BoundaryCondition.OUTFLOW, pressure=0.0),
         ),
         initial=parse_initial_conditions(ET.fromstring(DEFAULT_INITIAL_CONDITIONS_XML), 3),
-        outputs=OutputControl(total_csv_frequency=100, partial_csv_frequency=250, vtk_frequency=100),
+        outputs=OutputControl(format=OutputFormat.VTK, total_frequency=100),
     )
 
 
@@ -246,16 +248,27 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         widget = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(widget)
 
-        self._int_fields["vtk_frequency"] = self._create_int_input(-1, 1_000_000)
-        form.addRow("VTK frequency", self._int_fields["vtk_frequency"])
+        self._combo_fields["output_format"] = self._create_scheme_combo([fmt.value for fmt in OutputFormat])
+        self._combo_fields["output_format"].currentTextChanged.connect(self._apply_output_format)
+        form.addRow("Output format", self._combo_fields["output_format"])
 
-        self._int_fields["total_csv_frequency"] = self._create_int_input(-1, 1_000_000)
-        form.addRow("Total CSV frequency", self._int_fields["total_csv_frequency"])
+        self._int_fields["total_frequency"] = self._create_int_input(-1, 1_000_000)
+        form.addRow("Total frequency", self._int_fields["total_frequency"])
 
-        self._int_fields["partial_csv_frequency"] = self._create_int_input(-1, 1_000_000)
-        form.addRow("Partial CSV frequency", self._int_fields["partial_csv_frequency"])
+        self._int_fields["partial_frequency"] = self._create_int_input(-1, 1_000_000)
+        form.addRow("Partial frequency", self._int_fields["partial_frequency"])
 
         return widget
+
+    def _apply_output_format(self, name: str) -> None:
+        """
+        Match the partial interval to the format the combo now shows. Only CSV writes a per-rank file, so VTK sets that interval to -1 and disables the field.
+        """
+
+        writes_per_rank = parse_output_format(name) is OutputFormat.CSV
+        self._int_fields["partial_frequency"].setEnabled(writes_per_rank)
+        if not writes_per_rank:
+            self._int_fields["partial_frequency"].setValue(-1)
 
     def _build_initial_conditions_tab(self) -> QtWidgets.QWidget:
         widget = QtWidgets.QWidget()
@@ -333,9 +346,10 @@ class SimulationParametersDialog(QtWidgets.QDialog):
         self._bool_fields["include_pressure"].setChecked(case.solver.include_pressure)
         self._int_fields["time_integration_order"].setValue(case.time.integration_order)
 
-        self._int_fields["vtk_frequency"].setValue(case.outputs.vtk_frequency)
-        self._int_fields["total_csv_frequency"].setValue(case.outputs.total_csv_frequency)
-        self._int_fields["partial_csv_frequency"].setValue(case.outputs.partial_csv_frequency)
+        self._combo_fields["output_format"].setCurrentText(case.outputs.format.value)
+        self._int_fields["total_frequency"].setValue(case.outputs.total_frequency)
+        self._int_fields["partial_frequency"].setValue(case.outputs.partial_frequency)
+        self._apply_output_format(case.outputs.format.value)
 
         for face in Face:
             condition = case.boundaries.find_face(face)
@@ -394,9 +408,9 @@ class SimulationParametersDialog(QtWidgets.QDialog):
                 viscous_scheme=self._combo_fields["viscous_scheme"].currentText().strip(),
             ),
             outputs=OutputControl(
-                total_csv_frequency=self._int_fields["total_csv_frequency"].value(),
-                partial_csv_frequency=self._int_fields["partial_csv_frequency"].value(),
-                vtk_frequency=self._int_fields["vtk_frequency"].value(),
+                format=parse_output_format(self._combo_fields["output_format"].currentText().strip()),
+                total_frequency=self._int_fields["total_frequency"].value(),
+                partial_frequency=self._int_fields["partial_frequency"].value(),
             ),
         )
 

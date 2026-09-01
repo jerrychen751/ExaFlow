@@ -27,7 +27,7 @@ def main() -> None:
             "Created by create_simulation_directories.py\n"
             "Contains build/in/input.xml\n"
             "in/ has input.xml where you specify simulation parameters\n"
-            "Output CSVs and VTK files go to one run folder under ~/Documents/ExaFlow\n"
+            "Output goes to one run folder under ~/Documents/ExaFlow, in the one format <Format> selects\n"
             "Set EXAFLOW_OUTPUT_ROOT to write those run folders somewhere else\n"
             "Run with: mpiexec -n 4 exaflow run --case build/in/input.xml\n"
             f"Location: {target_root}\n"

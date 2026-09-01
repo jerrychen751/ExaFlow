@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 import math
 
 
@@ -23,25 +24,53 @@ class TimeControl:
             raise ValueError(f"integration_order must be 1, 2 or 3, got {self.integration_order}.")
 
 
+class OutputFormat(str, Enum):
+    """
+    The file format a run writes. Values are kept as strings to preserve readable serialization (e.g., XML).
+    """
+
+    CSV = "CSV"
+    VTK = "VTK"
+
+
+def parse_output_format(value: str) -> OutputFormat:
+    """
+    Parse an output format from a string. This is intentionally strict: an unknown value raises a ValueError rather than silently accepting the string.
+    """
+
+    try:
+        return OutputFormat(value)
+    except ValueError as exc:
+        allowed = ", ".join(fmt.value for fmt in OutputFormat)
+        raise ValueError(f"Unknown output format {value!r}. Allowed: {allowed}.") from exc
+
+
 @dataclass(frozen=True, slots=True)
 class OutputControl:
     """
-    How often each output format is written during the march, counted in time steps. A value of -1 asks for no writes during the march; it does not turn the format off, because the solver writes the first and last state through every writer whatever its interval. Zero and negative values other than -1 are rejected, because a modulo against them cannot decide a step.
+    Which format a run writes, and how often, counted in time steps. One run writes one format, so a run folder holds .vtr files or .csv files and never both.
+
+    `total_frequency` is the interval of the file that holds the whole domain, and `partial_frequency` the interval of the per-rank files. Only CSV has a per-rank file, so VTK rejects a `partial_frequency` other than -1 rather than accept a value it would drop. A frequency of -1 asks for no writes during the march; it does not turn the format off, because the solver writes the first and last state through every writer whatever its interval. Zero and negative values other than -1 are rejected, because a modulo against them cannot decide a step.
     """
 
-    total_csv_frequency: int = -1
-    partial_csv_frequency: int = -1
-    vtk_frequency: int = -1
+    format: OutputFormat = OutputFormat.CSV
+    total_frequency: int = -1
+    partial_frequency: int = -1
 
     def __post_init__(self) -> None:
-        for name in ("total_csv_frequency", "partial_csv_frequency", "vtk_frequency"):
+        for name in ("total_frequency", "partial_frequency"):
             frequency = getattr(self, name)
             if frequency != -1 and frequency < 1:
                 raise ValueError(f"{name} must be -1 or >= 1, got {frequency}.")
+        if self.format is not OutputFormat.CSV and self.partial_frequency != -1:
+            raise ValueError(
+                f"{self.format.value} writes no per-rank file, so partial_frequency must be -1, "
+                f"got {self.partial_frequency}."
+            )
 
     def is_due(self, frequency: int, step: int) -> bool:
         """
-        Report whether a format whose interval is `frequency` writes at this zero-based step.
+        Report whether a writer whose interval is `frequency` writes at this zero-based step.
         """
 
         return frequency >= 1 and step % frequency == 0

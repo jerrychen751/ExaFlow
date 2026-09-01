@@ -7,11 +7,11 @@ from typing import Callable
 import numpy as np
 import pytest
 
-from exaflow.config import Case
+from exaflow.config import Case, OutputControl, OutputFormat
 from exaflow.fields import allocate_state
 from exaflow.io.csv import format_field_csv, write_text_atomically
 from exaflow.io.storage import create_run_directory, resolve_output_root
-from exaflow.io.writers import RankCsvWriter, TotalCsvWriter, build_writers, gather_domain_fields
+from exaflow.io.writers import RankCsvWriter, TotalCsvWriter, VtkWriter, build_writers, gather_domain_fields
 from exaflow.mpi.gather import gather_global_array
 from exaflow.mpi.process_grid import ProcessGrid
 from exaflow.mpi.subdomain import Subdomain
@@ -191,7 +191,7 @@ def test_the_total_writer_names_one_file_for_the_whole_domain(
     assert len(written.read_text(encoding="utf-8").splitlines()) == 9
 
 
-def test_every_standard_writer_keeps_the_interval_its_format_was_given(
+def test_a_csv_run_builds_the_whole_domain_and_per_rank_writers(
     tmp_path: Path,
     build_case: Callable[..., Case],
     build_subdomain: Callable[..., Subdomain],
@@ -199,14 +199,27 @@ def test_every_standard_writer_keeps_the_interval_its_format_was_given(
     case = build_case((8,))
     subdomain = build_subdomain(case.grid)
 
-    writers = build_writers(
-        str(tmp_path),
-        case.grid,
-        subdomain,
-        None,
-        total_csv_frequency=2,
-        partial_csv_frequency=5,
-        vtk_frequency=-1,
-    )
+    outputs = OutputControl(format=OutputFormat.CSV, total_frequency=2, partial_frequency=5)
+    writers = build_writers(str(tmp_path), case.grid, subdomain, None, outputs)
 
-    assert [writer.frequency for writer in writers] == [2, 5, -1]
+    assert [type(writer) for writer in writers] == [TotalCsvWriter, RankCsvWriter]
+    assert [writer.frequency for writer in writers] == [2, 5]
+
+
+def test_a_vtk_run_builds_the_vtk_writer_and_nothing_else(
+    tmp_path: Path,
+    build_case: Callable[..., Case],
+    build_subdomain: Callable[..., Subdomain],
+) -> None:
+    """
+    One run writes one format, so a VTK case gets no CSV writer at all.
+    """
+
+    case = build_case((8,))
+    subdomain = build_subdomain(case.grid)
+
+    outputs = OutputControl(format=OutputFormat.VTK, total_frequency=2)
+    writers = build_writers(str(tmp_path), case.grid, subdomain, None, outputs)
+
+    assert [type(writer) for writer in writers] == [VtkWriter]
+    assert [writer.frequency for writer in writers] == [2]

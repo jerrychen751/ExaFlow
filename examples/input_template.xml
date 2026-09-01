@@ -177,8 +177,8 @@
       <IncludePressureEffects>False</IncludePressureEffects>
     </SolverProperties>
     <OutputProperties>
-      <WriteTotalVTKFrequency>100</WriteTotalVTKFrequency>
-      <WriteTotalCSVFrequency>100</WriteTotalCSVFrequency>
-      <WritePartialCSVFrequency>250</WritePartialCSVFrequency>
+      <Format>CSV</Format>
+      <WriteTotalFrequency>100</WriteTotalFrequency>
+      <WritePartialFrequency>250</WritePartialFrequency>
     </OutputProperties>
   </Simulation>

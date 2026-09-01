@@ -55,6 +55,18 @@ Every run writes into its own folder under `~/Documents/ExaFlow`:
 
 `*_Total.csv` holds the full domain, joined on rank 0. `*_<n>.csv` holds the part that rank `n` owned. A folder name is the start time plus a label, so a new run never overwrites an old one.
 
+One run writes one format, so a run folder holds `.csv` files or `.vtr` files and never both. `<Format>` in `<OutputProperties>` selects it, `CSV` or `VTK`, and the shipped template selects CSV:
+
+```xml
+<OutputProperties>
+  <Format>CSV</Format>
+  <WriteTotalFrequency>100</WriteTotalFrequency>
+  <WritePartialFrequency>250</WritePartialFrequency>
+</OutputProperties>
+```
+
+`WriteTotalFrequency` is the interval in time steps of the whole-domain file, and `WritePartialFrequency` the interval of the per-rank files, which only CSV writes. Every case file carries both elements, so a VTK case sets `<WritePartialFrequency>` to -1 and is refused otherwise. An interval of -1 asks for no writes during the march; the first and last state are written whatever the interval. A VTK run writes `Original_Total.vtr`, `Final_Total.vtr` and one `<step>_Total.vtr` per interval, which is what the GUI viewer and ParaView read.
+
 Set `EXAFLOW_OUTPUT_ROOT` to write the run folders somewhere else:
 
 ```bash
@@ -67,7 +79,7 @@ EXAFLOW_OUTPUT_ROOT=/tmp/exaflow-runs uv run exaflow run --case examples/input_t
 uv run python run_gui.py
 ```
 
-The window has a control column on the left and a 3D viewer on the right. Edit the case, set the number of MPI processes, and press Run. The GUI starts the standard `exaflow run --case` command through `mpiexec`. The viewer loads the newest result file from the output root while the run continues.
+The window has a control column on the left and a 3D viewer on the right. Edit the case, set the number of MPI processes, and press Run. The GUI starts the standard `exaflow run --case` command through `mpiexec`. The viewer loads the newest result file from the output root while the run continues. The case a new window opens on writes VTK, which carries the physical extent the slice control reports in metres; the Output & Misc tab switches it to CSV.
 
 The **Slice** row cuts a 3D result on one axis and shows that plane by itself. Pick the axis, move the position slider, and the camera faces the plane and stops rotating. The position label states the unit: metres for a `.vtr` file, and cells for a CSV file, which carries the indices and no physical extent. A 1D or 2D result is already a cross-section, so the viewer shows it flat and the control stays disabled.
 
@@ -82,7 +94,7 @@ src/exaflow/
         boundaries.py # Face, FaceCondition, Boundaries
         boundary_conditions.py # BoundaryCondition and the strict parser for its names
         initial_conditions.py # UniformValue, StepValue as value types
-        time_control.py # TimeControl, OutputControl
+        time_control.py # TimeControl, OutputControl, OutputFormat
         case_xml.py # read_case and write_case: one field map, both directions
     fields.py # FlowState: velocity (dimension, *padded), pressure (*padded)
     run.py # run_case: the typed application entry point
@@ -248,7 +260,7 @@ uv run pytest tests/test_numerics.py
 
 The first line runs everything. The second leaves out the launcher and the visualization stack, the third keeps only the runs that start `mpiexec`, and the fourth runs one module.
 
-321 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
+327 tests run in about five seconds. One test module covers one source module. `tests/conftest.py` holds what they share: `build_case` and `build_subdomain` build a case and one rank's block, `template_case_path` gives the absolute path of `examples/input_template.xml`, and `run_under_mpiexec` starts a helper script at a given rank count.
 
 Three markers select a subset:
 
@@ -323,8 +335,8 @@ Two details keep MPI working inside the bundle:
 - Explicit RK time stepping (orders 1-3), each verified at its design order
 - MPI domain decomposition and ghost exchange, verified rank-count independent
 - All boundary condition types (except time-dependent)
-- CSV and VTK output
-- 321 tests, and `uv run mypy src tests` reporting no issues
+- CSV and VTK output, one format per run folder
+- 327 tests, and `uv run mypy src tests` reporting no issues
 
 **In progress:**
 - Pressure projection (Poisson solver for incompressibility)

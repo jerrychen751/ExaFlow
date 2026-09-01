@@ -16,6 +16,7 @@ from exaflow.config import (
     Grid,
     InitialConditions,
     OutputControl,
+    OutputFormat,
     SolverOptions,
     StepValue,
     TimeControl,
@@ -97,15 +98,24 @@ def test_time_control_rejects_a_setting_the_march_cannot_use(
 
 def test_output_control_rejects_a_zero_interval() -> None:
     with pytest.raises(ValueError, match="must be -1 or >= 1"):
-        OutputControl(vtk_frequency=0)
+        OutputControl(total_frequency=0)
+
+
+def test_a_vtk_run_refuses_a_per_rank_interval() -> None:
+    """
+    VTK has one whole-domain file and no per-rank file, so an interval for one would be dropped without a word.
+    """
+
+    with pytest.raises(ValueError, match="partial_frequency must be -1"):
+        OutputControl(format=OutputFormat.VTK, partial_frequency=5)
 
 
 def test_output_control_selects_the_right_steps() -> None:
-    outputs = OutputControl(total_csv_frequency=10)
-    assert outputs.is_due(outputs.total_csv_frequency, 0)
-    assert outputs.is_due(outputs.total_csv_frequency, 20)
-    assert not outputs.is_due(outputs.total_csv_frequency, 15)
-    assert not outputs.is_due(outputs.vtk_frequency, 0)
+    outputs = OutputControl(total_frequency=10)
+    assert outputs.is_due(outputs.total_frequency, 0)
+    assert outputs.is_due(outputs.total_frequency, 20)
+    assert not outputs.is_due(outputs.total_frequency, 15)
+    assert not outputs.is_due(outputs.partial_frequency, 0)
 
 
 def test_an_interval_of_minus_one_is_due_at_no_step() -> None:
@@ -114,7 +124,7 @@ def test_an_interval_of_minus_one_is_due_at_no_step() -> None:
     """
 
     outputs = OutputControl()
-    assert not any(outputs.is_due(outputs.total_csv_frequency, step) for step in range(50))
+    assert not any(outputs.is_due(outputs.total_frequency, step) for step in range(50))
 
 
 def test_periodic_faces_must_be_paired() -> None:

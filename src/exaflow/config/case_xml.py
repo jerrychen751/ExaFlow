@@ -9,7 +9,7 @@ from .case import Case, SolverOptions
 from .fluid import Fluid
 from .grid import Grid
 from .initial_conditions import FieldInitial, InitialConditions, StepValue, UniformValue
-from .time_control import OutputControl, TimeControl
+from .time_control import OutputControl, TimeControl, parse_output_format
 
 AXIS_LETTERS = ("X", "Y", "Z")
 VELOCITY_NAMES = ("u", "v", "w")
@@ -66,9 +66,9 @@ def parse_case(root: ElementTree.Element) -> Case:
 
     output_node = _find_child(root, "OutputProperties")
     outputs = OutputControl(
-        total_csv_frequency=_read_int(output_node, "WriteTotalCSVFrequency"),
-        partial_csv_frequency=_read_int(output_node, "WritePartialCSVFrequency"),
-        vtk_frequency=_read_int(output_node, "WriteTotalVTKFrequency"),
+        format=parse_output_format(_read_text(output_node, "Format")),
+        total_frequency=_read_int(output_node, "WriteTotalFrequency"),
+        partial_frequency=_read_int(output_node, "WritePartialFrequency"),
     )
 
     return Case(
@@ -126,9 +126,9 @@ def write_case(case: Case) -> str:
     _put(solver_node, "IncludePressureEffects", case.solver.include_pressure)
 
     output_node = ElementTree.SubElement(root, "OutputProperties")
-    _put(output_node, "WriteTotalVTKFrequency", case.outputs.vtk_frequency)
-    _put(output_node, "WriteTotalCSVFrequency", case.outputs.total_csv_frequency)
-    _put(output_node, "WritePartialCSVFrequency", case.outputs.partial_csv_frequency)
+    _put(output_node, "Format", case.outputs.format.value)
+    _put(output_node, "WriteTotalFrequency", case.outputs.total_frequency)
+    _put(output_node, "WritePartialFrequency", case.outputs.partial_frequency)
 
     raw = ElementTree.tostring(root, encoding="utf-8")
     return minidom.parseString(raw).toprettyxml(indent="  ")
